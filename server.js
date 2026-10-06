@@ -158,13 +158,13 @@ function createGameServer() {
     for (const p of room.players) {
       const me = g.actors.find(a => a.id === p.id), navigator = p.role === 'Navigator';
       // Scavengers get nearby entities only; the tactical overview belongs to Navigator.
-      const visible = object => navigator || (me && dist(me, object) < 8.5 && clearLine(me, object));
+      const visible = object => navigator || (me && dist(me, object) < 1.8 && clearLine(me, object));
       io.to(p.id).emit('state', {
         roundId: g.started, phase: room.phase, role: p.role, remaining: room.phase === 'finished' ? g.finalRemaining : Math.max(0, (g.deadline - now) / 1000),
         quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
         actors: g.actors.map(a => ({ id: a.id, name: a.name, x: a.x, z: a.z, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
-        enemy: visible(g.enemy) ? { x: g.enemy.x, z: g.enemy.z, yaw: g.enemy.yaw, mode: g.enemy.mode, target: g.enemy.target } : null,
+        enemy: navigator ? { x: g.enemy.x, z: g.enemy.z, yaw: g.enemy.yaw, mode: g.enemy.mode, target: g.enemy.target } : null,
         ping: g.ping && now < g.ping.until ? g.ping : null, cue: g.cue && now < g.cue.until ? g.cue : null,
         eventId: g.eventId, event: g.event, eventKind: g.eventKind || 'info', outcome: g.outcome,
         elapsed: g.elapsed
@@ -213,7 +213,7 @@ function createGameServer() {
       if (room.phase === 'playing') return reply({ error: 'Shift already running.' });
       roles(room); room.phase = 'playing'; room.notice = ''; room.game = freshGame(room.players, performance.now());
       reply({ ok: true }); roster(room);
-      io.to(room.code).emit('world', { width: W, depth: H, walls: WALLS, hazards: HAZARDS, home: HOME, quota: QUOTA, duration: ROUND / 1000 });
+      for (const p of room.players) io.to(p.id).emit('world', { width: W, depth: H, walls: WALLS, hazards: p.role === 'Navigator' ? HAZARDS : [], home: HOME, quota: QUOTA, duration: ROUND / 1000 });
       snapshot(room, performance.now());
     });
     socket.on('input', data => {

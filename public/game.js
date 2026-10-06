@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 let lobby = null, state = null, previous = null, world = null, received = 0, yaw = 0, pitch = 0;
+let commandCamera, commandGroup, hologram, commandFocus = false;
 let renderer, scene, camera, tacticalCamera, flashlight, lightTarget, staticGroup, actorGroup, itemGroup, enemyGroup, pingGroup, carryGroup;
 let items = new Map(), actors = new Map(), currentRound = null;
 let lastFrame = performance.now(), lastSound = 0, lastEvent = -1, lastCue = '';
@@ -82,11 +83,11 @@ socket.on('state', data => {
     $('result').hidden = true; $('chatLog').replaceChildren();
   }
   $('front').hidden = true; $('game').hidden = false; $('footer').hidden = true; document.body.classList.add('inGame');
-  $('role').textContent = nav ? 'NAVIGATOR' : 'SCAVENGER'; $('viewLabel').textContent = nav ? 'SPECTRAL OVERVIEW / WALLS TRANSLUCENT' : 'BODYCAM / LIVE';
+  $('role').textContent = nav ? 'NAVIGATOR' : 'SCAVENGER'; $('viewLabel').textContent = nav ? 'COMMAND TRAILER / CLASSIFIED SENSOR FEED' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
   const remaining = Math.ceil(data.remaining); $('time').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   $('time').classList.toggle('urgent', remaining <= 30);
-  $('navTools').hidden = $('navLegend').hidden = !nav; $('scavengerInfo').hidden = nav; $('crosshair').hidden = nav;
+  $('navTools').hidden = $('navLegend').hidden = $('commandView').hidden = !nav; $('scavengerInfo').hidden = nav; $('crosshair').hidden = nav;
   $('touchControls').hidden = nav || !touchDevice || data.phase !== 'playing'; $('viewport').classList.toggle('touchUI', touchDevice && !nav);
   $('clickToLook').hidden = nav || touchDevice || document.pointerLockElement === renderer?.domElement || data.phase !== 'playing';
   $('guideCue').hidden = !data.cue; if (data.cue) { $('guideCue').textContent = `NAVIGATOR: ${data.cue.text}`; $('guideCue').classList.toggle('danger', ['DANGER', 'STOP'].includes(data.cue.text)); }
@@ -129,6 +130,7 @@ function initGraphics() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   $('scene').append(renderer.domElement);
   scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(72, 1, 0.08, 70);
+  commandCamera = new THREE.PerspectiveCamera(55, 1, .05, 80);
   camera.rotation.order = 'YXZ'; tacticalCamera = new THREE.OrthographicCamera(-18, 18, 18, -18, .1, 100);
   scene.add(camera); carryGroup = new THREE.Group(); camera.add(carryGroup);
   flashlight = new THREE.SpotLight(0xd2efda, 16, 18, Math.PI / 5, .6, 1.3); lightTarget = new THREE.Object3D(); scene.add(flashlight, lightTarget); flashlight.target = lightTarget;
@@ -148,7 +150,7 @@ function ring(parent, radius, color, x, z, thickness = .04) {
 }
 function textSprite(text, color = '#b9f8bd', scale = 2.5, depthTest = true) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
-  const cx = c.getContext('2d'); cx.fillStyle = '#08141bd9'; cx.fillRect(0,0,512,96); cx.font = 'bold 35px monospace'; cx.fillStyle = color; cx.textAlign='center'; cx.fillText(text,256,61);
+  const cx = c.getContext('2d'); cx.fillStyle = '#08141bd9'; cx.fillRect(0,0,512,96); let size=35;cx.font=`bold ${size}px monospace`;while(cx.measureText(text).width>480&&size>10){size--;cx.font=`bold ${size}px monospace`;} cx.fillStyle = color; cx.textAlign='center'; cx.fillText(text,256,61);
   const texture = new THREE.CanvasTexture(c); texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map:texture, depthTest, transparent:true })); sprite.scale.set(scale,scale*96/512,1); return sprite;
 }
@@ -156,14 +158,15 @@ function disposeGroup(group) {
   if (!group) return;
   const geometries = new Set(), materials = new Set();
   group.traverse(o => { if(o.geometry) geometries.add(o.geometry); if(o.material) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m)); });
-  geometries.forEach(g=>g.dispose()); materials.forEach(m=>{m.map?.dispose();m.dispose();}); scene.remove(group);
+  geometries.forEach(g=>g.dispose()); materials.forEach(m=>{m.map?.dispose();m.dispose();}); group.removeFromParent();
 }
 function buildWorld(nav) {
-  for(const group of [staticGroup,actorGroup,itemGroup,enemyGroup,pingGroup])disposeGroup(group);
+  for(const group of [staticGroup,actorGroup,itemGroup,enemyGroup,pingGroup,commandGroup])disposeGroup(group);
+  if(hologram)scene.remove(hologram); hologram = null; commandGroup = null;
   while(carryGroup.children.length){const child=carryGroup.children[0];carryGroup.remove(child);disposeGroup(child);}
   items.clear(); actors.clear();
   staticGroup = new THREE.Group(); actorGroup=new THREE.Group(); itemGroup=new THREE.Group(); scene.add(staticGroup,actorGroup,itemGroup);
-  scene.background = new THREE.Color(nav ? 0x0b1821 : 0x080d15); scene.fog = nav ? null : new THREE.FogExp2(0x0c1420, .045);
+  scene.background = new THREE.Color(nav ? 0x0b1821 : 0x080d15); scene.fog = nav ? null : new THREE.FogExp2(0x0c1420, .17);
   staticGroup.add(new THREE.HemisphereLight(0xbcd6d3,0x1f2831,nav?2.1:.7));
   const sun = new THREE.DirectionalLight(0x9cc5d2,nav?2:1.1);sun.position.set(3,12,4);staticGroup.add(sun);
   const floorCanvas=document.createElement('canvas');floorCanvas.width=floorCanvas.height=256;const f=floorCanvas.getContext('2d');f.fillStyle='#273136';f.fillRect(0,0,256,256);f.strokeStyle='#465453';f.lineWidth=2;f.strokeRect(0,0,256,256);f.lineWidth=1;f.strokeStyle='#313e40';f.strokeRect(8,8,240,240);
@@ -209,8 +212,48 @@ function buildWorld(nav) {
   enemyGroup=makeEnemy();scene.add(enemyGroup);enemyGroup.visible=false;
   pingGroup=new THREE.Group();ring(pingGroup,.55,cyan,0,0,.055);const beacon=cylinder(pingGroup,.06,.06,2,0,1,0,new THREE.MeshBasicMaterial({color:cyan,transparent:true,opacity:.55}));pingGroup.add(beacon);scene.add(pingGroup);pingGroup.visible=false;
   tacticalCamera.position.set(14,34,31);tacticalCamera.lookAt(14,0,12);flashlight.visible=!nav;
+  if(nav)buildCommandTrailer();
   resize();
 }
+
+$('commandView').onclick=()=>{commandFocus=!commandFocus;$('commandView').textContent=commandFocus?'WIDE TRAILER VIEW':'FOCUS HOLOGRAM';positionCommandCamera();};
+function positionCommandCamera(){
+  if(!commandCamera)return;
+  const mobileFactor=Math.max(1,1.35/commandCamera.aspect);
+  commandCamera.position.set(commandFocus?0:1.1,commandFocus?4.8:3.5, (commandFocus?3.5:5.5)*mobileFactor);
+  commandCamera.lookAt(0,1.1,commandFocus?-.1:0);
+}
+function buildCommandTrailer(){
+  commandFocus=false;$('commandView').textContent='FOCUS HOLOGRAM';
+  hologram=new THREE.Group();hologram.scale.setScalar(.14);hologram.position.set(-1.96,1.13,-1.68);
+  for(const g of [staticGroup,actorGroup,itemGroup,enemyGroup,pingGroup])hologram.add(g);
+  scene.add(hologram);commandGroup=new THREE.Group();scene.add(commandGroup);
+  const steel=material(0x18232c,{metalness:.65}),dark=material(0x080f16),trim=material(0x334853),glow=new THREE.MeshBasicMaterial({color:cyan});
+  box(commandGroup,10,.2,10,0,-.1,0,steel);
+  box(commandGroup,10,4,.15,0,2,-4.4,steel);box(commandGroup,.15,4,9,-4.5,2,0,steel);box(commandGroup,.15,4,9,4.5,2,0,steel);
+  for(let x=-4;x<=4;x+=1){box(commandGroup,.06,3.8,.12,x,1.9,-4.27,trim);}
+  box(commandGroup,4.4,.18,3.9,0,1.02,0,dark);box(commandGroup,4.5,.06,4,0,.92,0,trim);
+  for(const x of [-1.8,1.8])for(const z of [-1.4,1.4])box(commandGroup,.2,.9,.2,x,.45,z,steel);
+  for(const z of [-1.96,1.96])box(commandGroup,4.5,.04,.045,0,1.13,z,glow);
+  for(const x of [-2.23,2.23])box(commandGroup,.045,.04,4,x,1.13,0,glow);
+  const header=textSprite('MISSION COMMAND / SECTOR 07','#b9f8bd',4.8);header.position.set(0,3.3,-4.15);commandGroup.add(header);
+  for(const [text,x]of [['SPECTRAL LINK',-2.8],['CREW BODYCAM',0],['THREAT ANALYSIS',2.8]]){
+    box(commandGroup,2.3,1.25,.12,x,2.15,-4.1,dark);
+    const screen=textSprite(text,'#64ddd4',2.1);screen.position.set(x,2.15,-3.98);commandGroup.add(screen);
+    for(let i=0;i<6;i++)box(commandGroup,1.3-i*.12,.025,.02,x,1.8+i*.09,-3.99,new THREE.MeshBasicMaterial({color:i%2?0x285858:0x5d9a8c}));
+  }
+  box(commandGroup,8,.15,1,0,.95,-3.5,steel);
+  for(const x of [-3,3]){
+    box(commandGroup,1.3,1.8,.7,x,.9,-2.8,dark);
+    for(let i=0;i<9;i++){box(commandGroup,1.1,.08,.02,x,.3+i*.16,-2.43,trim);sphere(commandGroup,.025,x+.4,.3+i*.16,-2.4,new THREE.MeshBasicMaterial({color:i%3===0?red:mint}));}
+  }
+  const chair=new THREE.Group();box(chair,.85,.12,.8,0,.52,0,dark);box(chair,.85,.85,.12,0,1,.35,steel);cylinder(chair,.05,.05,.5,0,.25,0,trim);chair.position.set(-3.1,0,1.3);chair.rotation.y=.5;commandGroup.add(chair);
+  const lamp=new THREE.PointLight(0x7caeae,22,13,2);lamp.position.set(0,3,1);commandGroup.add(lamp);
+  commandGroup.add(new THREE.HemisphereLight(0x8ea9b7,0x192b27,1.5));
+  const deskLabel=textSprite('CLASSIFIED SENSOR FEED','#64ddd4',3);deskLabel.position.set(0,.76,2.02);commandGroup.add(deskLabel);
+  scene.background=new THREE.Color(0x050b12);positionCommandCamera();
+}
+
 function makeCargo(item) {
   const group=new THREE.Group(), gold=material(amber,{metalness:.7,roughness:.25}), black=material(0x182831), glow=material(cyan,{emissive:cyan,emissiveIntensity:1.1}), glass=material(0x72c7b8,{metalness:.4,roughness:.15});
   if(item.kind==='core'){
@@ -272,14 +315,14 @@ function updateEntities(nav) {
 }
 function resize() {
   if(!renderer)return;const width=$('viewport').clientWidth,height=$('viewport').clientHeight;if(!width||!height)return;
-  renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();
+  renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();commandCamera.aspect=width/height;commandCamera.updateProjectionMatrix();positionCommandCamera();
   const viewHeight=Math.max(30,33/camera.aspect),viewWidth=viewHeight*camera.aspect;
   Object.assign(tacticalCamera,{left:-viewWidth/2,right:viewWidth/2,top:viewHeight/2,bottom:-viewHeight/2});tacticalCamera.updateProjectionMatrix();
 }
 function onMapClick(e) {
   if(state?.role!=='Navigator'||state.phase!=='playing'||!renderer)return;
-  const rect=renderer.domElement.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),tacticalCamera);
-  const point=new THREE.Vector3();if(raycaster.ray.intersectPlane(floorPlane,point))socket.emit('guide',{x:point.x,z:point.z});
+  const rect=renderer.domElement.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),commandCamera);
+  const point=new THREE.Vector3();const tablePlane=new THREE.Plane(new THREE.Vector3(0,1,0),-1.13);if(raycaster.ray.intersectPlane(tablePlane,point)&&hologram){hologram.updateMatrixWorld(true);hologram.worldToLocal(point);socket.emit('guide',{x:point.x,z:point.z});}
 }
 const mapping={w:'forward',ArrowUp:'forward',s:'back',ArrowDown:'back',a:'left',d:'right',Shift:'sprint'};
 function input() {
@@ -330,7 +373,7 @@ function frame(now) {
     const directions=['N','NE','E','SE','S','SW','W','NW'];$('compass').textContent=`${directions[Math.round(yaw/(Math.PI/4))%8]} · ${Math.round(yaw*180/Math.PI)}°`;
     $('waypoint').hidden=!state.ping;
     if(state.ping){const dx=state.ping.x-me.x,dz=state.ping.z-me.z;let angle=Math.atan2(dx,-dz)-yaw;angle=Math.atan2(Math.sin(angle),Math.cos(angle));const arrow=Math.abs(angle)<.35?'↑':Math.abs(angle)>2.5?'↓':angle>0?'→':'←';$('waypoint').textContent=`${arrow} NAV WAYPOINT · ${Math.hypot(dx,dz).toFixed(1)}m`;}
-    const distance=state.enemy?Math.hypot(me.x-state.enemy.x,me.z-state.enemy.z):Infinity;
+    const distance=Infinity; // Classified threats are visible only to mission command.
     $('dangerOverlay').hidden=distance>7.5;
     if(now-lastSound>(distance<7?650:me.speed>.1?480:1500)){
       if(distance<7){tone(70,.12,'sine',.08,45);setTimeout(()=>tone(60,.1,'sine',.05),150);}
@@ -338,6 +381,6 @@ function frame(now) {
       lastSound=now;
     }
   }else{$('compass').textContent='↑ N / SPECTRAL';$('waypoint').hidden=true;$('dangerOverlay').hidden=true;}
-  renderer.render(scene,nav?tacticalCamera:camera);
+  renderer.render(scene,nav?commandCamera:camera);
 }
 requestAnimationFrame(frame);

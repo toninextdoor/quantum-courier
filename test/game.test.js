@@ -26,9 +26,9 @@ test('multiplayer authority, cargo, guidance, penalties, round result, replay an
     assert.match((await request(b,'start',{})).error,/host/);
     let outsiderStates=0;outsider.on('state',()=>outsiderStates++);
     const worlds=clients.slice(0,4).map(c=>next(c,'world'));
-    assert.equal((await request(a,'start',{})).ok,true); const maps=await Promise.all(worlds); assert.equal(maps[0].duration,180);
+    assert.equal((await request(a,'start',{})).ok,true); const maps=await Promise.all(worlds); assert.equal(maps[0].duration,180);assert.equal(maps[0].hazards.length,3);assert.deepEqual(maps[1].hazards,[]);assert.deepEqual(maps[2].hazards,[]);
     const views=await Promise.all(clients.slice(0,4).map(c=>next(c,'state')));
-    assert.deepEqual(views.map(v=>v.role),['Navigator','Scavenger','Scavenger','Scavenger']);assert.equal(views[0].items.length,8);assert.ok(views[1].items.length<8);assert.equal(views[1].enemy,null);
+    assert.deepEqual(views.map(v=>v.role),['Navigator','Scavenger','Scavenger','Scavenger']);assert.equal(views[0].items.length,8);assert.equal(views[1].items.length,0);assert.equal(views[1].enemy,null);
     const room=game.rooms.get(code),g=room.game,actor=g.actors[0];
     const origin=actor.x;a.emit('input',{strafe:1,yaw:0});await delay(80);assert.equal(actor.x,origin);
     b.emit('input',{strafe:1,yaw:0});await delay(100);assert.ok(actor.x>origin&&actor.x<origin+1);
@@ -47,7 +47,7 @@ test('multiplayer authority, cargo, guidance, penalties, round result, replay an
     room.players[1].input={};room.players[1].inputAt=0;
     const deadline=g.deadline;actor.safeUntil=0;Object.assign(actor,{x:6,z:11});await delay(65);
     assert.equal(actor.x,HOME.x);assert.equal(g.deadline,deadline-5000);assert.equal(actor.carrying,null);assert.equal(second.carrier,null);assert.equal(second.condition,68);
-    actor.safeUntil=0;Object.assign(actor,{x:24.5,z:5.5});Object.assign(g.enemy,{x:24.5,z:5.5});const before=g.deadline;await delay(65);
+    actor.safeUntil=0;Object.assign(actor,{x:24.5,z:5.5});Object.assign(g.enemy,{x:24.5,z:5.5});const before=g.deadline;const classified=await next(b,'state');assert.equal(classified.enemy,null);await delay(65);
     assert.equal(actor.x,HOME.x);assert.equal(g.catches,1);assert.equal(g.deadline,before-10000);
     g.score=599;const third=g.items[2];third.carrier=actor.id;actor.carrying=third.id;Object.assign(actor,{x:HOME.x,z:HOME.z});
     await delay(70);assert.equal(room.phase,'finished');assert.equal(g.outcome,'won');
