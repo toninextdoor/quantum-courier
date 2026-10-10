@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { io } = require('socket.io-client');
-const { createGameServer, solid, route, clearLine, HOME, CARGO } = require('../server');
+const { createGameServer, solid, route, clearLine, HOME, CARGO, WALLS, HAZARDS, PATROL, generateMap, floorCells } = require('../server');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const request = (socket, event, data) => new Promise((resolve, reject) => socket.timeout(2500).emit(event, data, (err, result) => err ? reject(err) : resolve(result)));
 const next = (socket, event) => new Promise((resolve, reject) => { const timer = setTimeout(() => { socket.off(event, handler); reject(Error(`Timed out waiting for ${event}`)); }, 3000); const handler = data => { clearTimeout(timer); resolve(data); }; socket.once(event, handler); });
@@ -12,7 +12,7 @@ test('all valuables have navigable paths; solid walls block sight and movement',
   assert.equal(clearLine({x:7,z:10.5},{x:10,z:10.5}),true);
 });
 test('multiplayer authority, cargo, guidance, penalties, round result, replay and room cleanup', async () => {
-  const game=createGameServer();await new Promise(resolve=>game.server.listen(0,'127.0.0.1',resolve));
+  const game=createGameServer({mapFactory:()=>({seed:1,walls:WALLS,hazards:HAZARDS,patrol:PATROL,platforms:[],items:CARGO.map(([name,value,x,z,kind],id)=>({id,name,value,x,z,y:0,kind,condition:100,carrier:null,delivered:false}))})});await new Promise(resolve=>game.server.listen(0,'127.0.0.1',resolve));
   const clients=[];
   try {
     const url=`http://127.0.0.1:${game.server.address().port}`;
@@ -59,4 +59,50 @@ test('multiplayer authority, cargo, guidance, penalties, round result, replay an
     for(const file of ['/','/style.css','/game.js'])assert.equal((await fetch(url+file)).status,200);
     a.disconnect();b.disconnect();c.disconnect();await delay(65);assert.equal(game.rooms.size,0);
   } finally {clients.forEach(c=>c.disconnect());await game.close();}
+});
+
+test('200 seeded warehouses vary and retain safe access to ordinary cargo and parkour entry',()=>{
+  const layouts=new Set();
+  for(let seed=1;seed<=200;seed++){
+    const map=generateMap(seed);layouts.add(JSON.stringify(map.walls));
+    assert.deepEqual(map,generateMap(seed),'seed must be reproducible');
+    const safe=floorCells(map.walls,map.hazards), reachable=new Set(safe.map(c=>`${c.x},${c.z}`));
+    for(const item of map.items.filter(i=>!i.premium))assert.ok(reachable.has(`${item.x},${item.z}`),'cargo must have a breach-free route');
+    assert.ok(map.items.filter(i=>!i.premium).reduce((n,i)=>n+i.value,0)>=600);
+    assert.ok(map.hazards.every(h=>Math.hypot(h.x-HOME.x,h.z-HOME.z)>7));
+    for(const p of map.platforms)assert.equal(solid(p.x+p.w/2,p.z+p.d/2,.3,map.walls),false);
+    assert.equal(map.items[8].value,450);assert.equal(map.items[8].y,map.platforms[3].h);
+    for(const patrol of map.patrol)assert.ok(route(HOME,patrol,map.walls).length);
+  }
+  assert.equal(layouts.size,200);
+});
+test('randomized replay, jump authority, platform landing, premium pickup and extraction',async()=>{
+  const game=createGameServer();await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const clients=[];
+  try{
+    const url=`http://127.0.0.1:${game.server.address().port}`;
+    for(let i=0;i<2;i++){const c=io(url,{transports:['websocket'],reconnection:false});clients.push(c);await next(c,'connect');}
+    const [nav,runner]=clients,initial=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Nav'});const code=(await initial).code;
+    await request(runner,'enter',{code,name:'Runner'});await request(nav,'start',{});const room=game.rooms.get(code),g=room.game,a=g.actors[0],map=g.map;
+    runner.emit('input',{jump:true,yaw:0});await delay(150);assert.ok(a.y>.4);const peak=a.y;
+    runner.emit('input',{jump:true,y:999,grounded:true});await delay(150);assert.ok(a.y<1.5,'clients cannot teleport vertically');assert.ok(a.y>=peak);
+    await delay(850);assert.equal(a.y,0);assert.equal(a.grounded,true);
+    const direction=Math.sign(map.platforms[1].x-map.platforms[0].x),firstStep=map.platforms[0];
+    Object.assign(a,{x:firstStep.x+firstStep.w/2-direction*1.3,z:firstStep.z+firstStep.d/2,y:0,vy:0,grounded:true,safeUntil:Infinity,jumpHeld:false});
+    for(const step of map.platforms){
+      const goal=step.x+step.w/2,heading=direction>0?Math.PI/2:Math.PI*1.5;
+      let guard=0;
+      while(Math.abs(a.x-goal)>.18&&guard++<40){runner.emit('input',{forward:1,yaw:heading,jump:true});await delay(50);}
+      runner.emit('input',{forward:0,yaw:heading,jump:false});await delay(750);
+      assert.ok(Math.abs(a.x-goal)<.2,'jump must reach next platform using real movement');assert.equal(a.y,step.h,'jump must land on ascending platform');
+    }
+    const platform=map.platforms[3],premium=g.items[8];Object.assign(a,{x:premium.x,z:premium.z,y:0,vy:0,grounded:true});
+    runner.emit('interact');await delay(80);assert.equal(a.carrying,null,'cannot grab high cargo from floor');
+    Object.assign(a,{y:platform.h,vy:0,grounded:true});await delay(380);runner.emit('interact');await delay(70);assert.equal(a.carrying,8);assert.equal(a.y,platform.h,'standing on platform remains stable');
+    // Step down onto the adjacent lower platform and ensure its floor catches a fall.
+    const lower=map.platforms[2];Object.assign(a,{x:lower.x+lower.w/2,z:lower.z+lower.d/2});await delay(450);assert.equal(a.y,lower.h);
+    Object.assign(a,{x:HOME.x,z:HOME.z,y:0,vy:0,grounded:true});await delay(80);assert.equal(g.score,450);
+    g.deadline=0;await delay(80);const oldLayout=JSON.stringify(map.walls);const world=next(nav,'world');await request(nav,'start',{});const newWorld=await world;
+    assert.notEqual(newWorld.seed,map.seed);assert.notEqual(JSON.stringify(newWorld.walls),oldLayout);
+    assert.equal(room.game.items.length,9);assert.equal(room.game.score,0);
+  }finally{clients.forEach(c=>c.disconnect());await game.close();}
 });

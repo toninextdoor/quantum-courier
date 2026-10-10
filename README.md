@@ -13,6 +13,12 @@ npm start
 
 Open http://localhost:3000. For another device on your LAN, use http://YOUR-COMPUTER-IP:3000. To play from different locations, deploy the entire Node app as a Web Service, following UPDATE.md. `PORT` is supplied by the hosting provider or defaults to 3000.
 
+## Randomized shifts and parkour (v2.2)
+
+Every launch generates new warehouse partitions, cargo locations, breach positions and Sentinel patrol points. The seed is shown in the HUD. Generation checks that floor cells are connected, and ordinary cargo is selected from the breach-free area reachable from extraction. The entrance and parkour area are reserved. All ordinary cargo is on the floor and provides more than enough value for the $600 quota.
+
+An optional four-platform route changes direction and position between rounds. Use Space or the touch JUMP button, release, then press again for each jump. The highest platform contains a $450 SKYLINE ARTIFACT. Jumping, gravity, collision, landings and cargo pickup height are decided on the server. Cargo cannot be grabbed from the floor beneath the final platform. Carry it down and back to extraction to score its remaining value. Falling off returns you to the floor; the course does not add a separate fall penalty.
+
 ## Mission rules
 
 - The first player is the Navigator. Everyone else is a Scavenger (up to three).
@@ -32,6 +38,7 @@ Open http://localhost:3000. For another device on your LAN, use http://YOUR-COMP
 | Move | WASD; up/down arrows also move | Direction buttons |
 | Look | Click Enter first-person view, then mouse; or left/right arrows | Swipe the 3D view |
 | Grab / drop | E | GRAB / DROP |
+| Jump | Space (release between jumps) | JUMP button |
 | Sprint | Hold Shift | Hold RUN |
 | Release mouse | Esc | Not required |
 | Guidance | Navigator clicks floor / command buttons | Navigator taps floor / command buttons |
@@ -53,6 +60,8 @@ npm test
 The tests use six real Socket.io clients to check room codes, capacity, role assignment, host permissions, snapshot visibility, input authority, stale-input expiry, guidance restrictions, pickup/drop, damage, extraction values, breach/catch penalties, win/loss, replay, disconnect cleanup and asset serving. Navigation tests verify a walkable path from extraction to every valuable and wall sight blocking.
 
 Development browser checks also passed with three Chromium clients, including a 390px touch viewport: WebGL, both asymmetric views, map waypoint clicks, commands, chat, mouse capture, keyboard and touch movement, pickup, extraction, loss results, replay and no horizontal mobile overflow. Physical-device/network playtesting is still needed to tune difficulty and confirm performance on your users' devices.
+
+Additional v2.2 checks cover 200 reproducible seeds with 200 distinct wall layouts, safe floor-cargo access, patrol reachability, and an integration test that jumps up every platform using actual movement inputs, lands, retrieves premium cargo, extracts it, and verifies a new map on replay.
 
 ## Technology
 

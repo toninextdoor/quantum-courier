@@ -8,6 +8,7 @@ let renderer, scene, camera, tacticalCamera, flashlight, lightTarget, staticGrou
 let items = new Map(), actors = new Map(), currentRound = null;
 let lastFrame = performance.now(), lastSound = 0, lastEvent = -1, lastCue = '';
 const keys = new Set(), touches = new Map();
+let jumpUntil = 0;
 let swipe = null, soundOn = false, audio = null;
 const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const mint = 0xb9f8bd, cyan = 0x64ddd4, amber = 0xfac875, red = 0xff666e;
@@ -83,6 +84,7 @@ socket.on('state', data => {
     $('result').hidden = true; $('chatLog').replaceChildren();
   }
   $('front').hidden = true; $('game').hidden = false; $('footer').hidden = true; document.body.classList.add('inGame');
+  $('sector').textContent = `SECTOR ${data.mapSeed?.toString(16).toUpperCase() || '07'} / LIVE LINK`;
   $('role').textContent = nav ? 'NAVIGATOR' : 'SCAVENGER'; $('viewLabel').textContent = nav ? 'COMMAND TRAILER / CLASSIFIED SENSOR FEED' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
   const remaining = Math.ceil(data.remaining); $('time').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
@@ -93,7 +95,7 @@ socket.on('state', data => {
   $('guideCue').hidden = !data.cue; if (data.cue) { $('guideCue').textContent = `NAVIGATOR: ${data.cue.text}`; $('guideCue').classList.toggle('danger', ['DANGER', 'STOP'].includes(data.cue.text)); }
   if (data.cue && data.cue.until !== lastCue) { lastCue = data.cue.until; tone(880, .1, 'sine', .06, 550); }
   if (nav) {
-    $('cargoList').replaceChildren(...data.items.map(i => { const row = document.createElement('div'), label = document.createElement('span'), value = document.createElement('span'); label.textContent = i.carrier ? `↗ ${i.name}` : i.name; value.textContent = `$${Math.round(i.value * i.condition / 100)}`; row.append(label, value); return row; }));
+    $('cargoList').replaceChildren(...data.items.map(i => { const row = document.createElement('div'), label = document.createElement('span'), value = document.createElement('span'); label.textContent = i.premium ? `★ ${i.name}` : i.carrier ? `↗ ${i.name}` : i.name; value.textContent = `$${Math.round(i.value * i.condition / 100)}`; row.append(label, value); return row; }));
   }
   const cargo = data.items.find(i => i.carrier === socket.id);
   $('cargoPanel').hidden = !cargo; $('touchGrab').textContent = cargo ? 'DROP' : 'GRAB';
@@ -102,7 +104,7 @@ socket.on('state', data => {
     $('cargoCondition').textContent = `${cargo.condition}% INTACT`; $('conditionBar').style.width = `${cargo.condition}%`;
     $('conditionBar').style.background = cargo.condition < 60 ? '#ff666e' : '#b9f8bd';
   }
-  const near = me && data.items.filter(i => !i.carrier && Math.hypot(i.x - me.x, i.z - me.z) < 1.8).sort((a,b)=>Math.hypot(a.x-me.x,a.z-me.z)-Math.hypot(b.x-me.x,b.z-me.z))[0];
+  const near = me && data.items.filter(i => !i.carrier && Math.hypot(i.x - me.x, i.z - me.z) < 1.8 && Math.abs((me.y||0)-(i.y||0))<.7).sort((a,b)=>Math.hypot(a.x-me.x,a.z-me.z)-Math.hypot(b.x-me.x,b.z-me.z))[0];
   $('interactPrompt').textContent = nav ? '' : cargo ? `${touchDevice ? 'DROP' : '[E] DROP'} · return to extraction` : near ? `${touchDevice ? 'GRAB' : '[E] GRAB'} ${near.name} · $${Math.round(near.value * near.condition / 100)}` : '';
   $('event').textContent = data.event;
   if (lastEvent !== data.eventId) {
@@ -184,6 +186,11 @@ function buildWorld(nav) {
       const long=wall.w>wall.d;
       for(let i=1;i<(long?wall.w:wall.d);i+=1.5)box(staticGroup,long?.07:wall.w+.04,2.15,long?wall.d+.04:.07,wall.x+(long?i:wall.w/2),1.2,wall.z+(long?wall.d/2:i),trimMaterial);
     }
+  }
+  for(const [index,b] of (world.platforms||[]).entries()){
+    box(staticGroup,b.w,b.h,b.d,b.x+b.w/2,b.h/2,b.z+b.d/2,material(0x345765,{metalness:.65}));
+    box(staticGroup,b.w+.03,.035,b.d+.03,b.x+b.w/2,b.h+.02,b.z+b.d/2,new THREE.MeshBasicMaterial({color:index===3?amber:cyan}));
+    const label=textSprite(index===3?'PREMIUM $450':`JUMP ${index+1}`,'#fac875',nav?2:1.2,!nav);label.position.set(b.x+b.w/2,b.h+.75,b.z+b.d/2);staticGroup.add(label);
   }
   const home=world.home;
   box(staticGroup,3.2,.08,3.2,home.x,.03,home.z,material(0x284b3a,{emissive:0x4aa86c,emissiveIntensity:.35}));ring(staticGroup,home.r,mint,home.x,home.z,.065);
@@ -298,7 +305,7 @@ function updateEntities(nav) {
   for(const item of state.items){
     let mesh=items.get(item.id);
     if(!mesh){mesh=makeCargo(item);if(nav){const label=textSprite(`$${Math.round(item.value*item.condition/100)}`,'#fac875',2.6,false);label.position.y=1.25;mesh.add(label);mesh.userData.valueLabel=label;mesh.userData.labelValue=Math.round(item.value*item.condition/100);}items.set(item.id,mesh);itemGroup.add(mesh);}
-    mesh.visible=item.carrier!==socket.id;mesh.position.set(item.x,item.carrier?.6:0,item.z);
+    mesh.visible=item.carrier!==socket.id;mesh.position.set(item.x,(item.y||0)+(item.carrier?.6:0),item.z);
     mesh.userData.ring.visible=!item.carrier;mesh.userData.carrier=item.carrier;
     const value=Math.round(item.value*item.condition/100);
     if(nav&&value!==mesh.userData.labelValue){mesh.remove(mesh.userData.valueLabel);disposeGroup(mesh.userData.valueLabel);const label=textSprite(`$${value}`,'#fac875',2.6,false);label.position.y=1.25;mesh.add(label);mesh.userData.valueLabel=label;mesh.userData.labelValue=value;}
@@ -324,19 +331,19 @@ function onMapClick(e) {
   const rect=renderer.domElement.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),commandCamera);
   const point=new THREE.Vector3();const tablePlane=new THREE.Plane(new THREE.Vector3(0,1,0),-1.13);if(raycaster.ray.intersectPlane(tablePlane,point)&&hologram){hologram.updateMatrixWorld(true);hologram.worldToLocal(point);socket.emit('guide',{x:point.x,z:point.z});}
 }
-const mapping={w:'forward',ArrowUp:'forward',s:'back',ArrowDown:'back',a:'left',d:'right',Shift:'sprint'};
+const mapping={' ':'jump',w:'forward',ArrowUp:'forward',s:'back',ArrowDown:'back',a:'left',d:'right',Shift:'sprint'};
 function input() {
   if(!state||state.role==='Navigator'||state.phase!=='playing'||!socket.connected)return;
   const held=new Set([...keys].map(k=>mapping[k]).concat([...touches.values()]));
-  socket.emit('input',{forward:Number(held.has('forward'))-Number(held.has('back')),strafe:Number(held.has('right'))-Number(held.has('left')),yaw,sprint:held.has('sprint')});
+  socket.emit('input',{forward:Number(held.has('forward'))-Number(held.has('back')),strafe:Number(held.has('right'))-Number(held.has('left')),yaw,jump:held.has('jump')||performance.now()<jumpUntil,sprint:held.has('sprint')});
   document.querySelectorAll('[data-move]').forEach(b=>b.classList.toggle('active',held.has(b.dataset.move)));
 }
-function release(){keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
+function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
   if(['INPUT','TEXTAREA'].includes(e.target.tagName)||$('helpDialog').open||state?.phase!=='playing'||state.role==='Navigator')return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e'].includes(key)){
-    e.preventDefault();keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');input();
+    e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');input();
   }
 });
 window.addEventListener('keyup',e=>{keys.delete(e.key.length===1?e.key.toLowerCase():e.key);input();});
@@ -346,13 +353,13 @@ document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockEleme
 $('lockMouse').onclick=()=>{try{const result=renderer?.domElement.requestPointerLock();result?.catch(()=>showError('Mouse capture unavailable. Use ← → to look, or swipe on mobile.'));}catch{showError('Use ← → to turn your view.');}};
 $('touchGrab').onclick=()=>socket.emit('interact');
 document.querySelectorAll('[data-move]').forEach(b=>{
-  b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);touches.set(e.pointerId,b.dataset.move);input();});
+  b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);touches.set(e.pointerId,b.dataset.move);if(b.dataset.move==='jump')jumpUntil=performance.now()+150;input();});
   for(const type of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(type,e=>{touches.delete(e.pointerId);input();});
 });
 setInterval(input,50);
 function interpolate(now,current,old) {
   if(!old||Math.hypot(current.x-old.x,current.z-old.z)>2)return current;
-  const t=Math.min(1,(now-received)/50);return{x:THREE.MathUtils.lerp(old.x,current.x,t),z:THREE.MathUtils.lerp(old.z,current.z,t)};
+  const t=Math.min(1,(now-received)/50);return{y:THREE.MathUtils.lerp(old.y||0,current.y||0,t),x:THREE.MathUtils.lerp(old.x,current.x,t),z:THREE.MathUtils.lerp(old.z,current.z,t)};
 }
 function frame(now) {
   requestAnimationFrame(frame);const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;
@@ -361,13 +368,13 @@ function frame(now) {
   if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!$('helpDialog').open){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const me=state.actors.find(a=>a.id===socket.id);
-  for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
-  for(const [id,mesh]of items){if(!mesh.userData.carrier)mesh.rotation.y=now*.0004+id;else{const a=state.actors.find(a=>a.id===mesh.userData.carrier);if(a){mesh.position.set(a.x+Math.sin(a.yaw)*.45,.5,a.z-Math.cos(a.yaw)*.45);mesh.rotation.y=-a.yaw;}}}
+  for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,pos.y||0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
+  for(const [id,mesh]of items){if(!mesh.userData.carrier)mesh.rotation.y=now*.0004+id;else{const a=state.actors.find(a=>a.id===mesh.userData.carrier);if(a){mesh.position.set(a.x+Math.sin(a.yaw)*.45,(a.y||0)+.5,a.z-Math.cos(a.yaw)*.45);mesh.rotation.y=-a.yaw;}}}
   if(state.enemy&&enemyGroup){const pos=interpolate(now,state.enemy,previous?.enemy);enemyGroup.position.set(pos.x,.035*Math.sin(now*.004),pos.z);enemyGroup.rotation.y=-state.enemy.yaw;}
   if(state.ping){pingGroup.position.set(state.ping.x,.015,state.ping.z);pingGroup.scale.setScalar(1+.1*Math.sin(now*.006));}
   if(!nav&&me){
     const pos=interpolate(now,me,previous?.actors.find(a=>a.id===socket.id));
-    camera.position.set(pos.x,1.38+(me.speed>.1?Math.sin(now*.011)*.025:0),pos.z);camera.rotation.set(-pitch,-yaw,0,'YXZ');
+    camera.position.set(pos.x,(pos.y||0)+1.38+(me.speed>.1?Math.sin(now*.011)*.025:0),pos.z);camera.rotation.set(-pitch,-yaw,0,'YXZ');
     flashlight.position.copy(camera.position);const direction=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);lightTarget.position.copy(camera.position).addScaledVector(direction,8);
     carryGroup.rotation.z=me.speed>.1?Math.sin(now*.008)*.025:0;
     const directions=['N','NE','E','SE','S','SW','W','NW'];$('compass').textContent=`${directions[Math.round(yaw/(Math.PI/4))%8]} · ${Math.round(yaw*180/Math.PI)}°`;
