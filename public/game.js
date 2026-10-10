@@ -8,7 +8,14 @@ let renderer, scene, camera, tacticalCamera, flashlight, lightTarget, staticGrou
 let items = new Map(), actors = new Map(), currentRound = null;
 let lastFrame = performance.now(), lastSound = 0, lastEvent = -1, lastCue = '';
 const keys = new Set(), touches = new Map();
-let jumpUntil = 0;
+let jumpUntil = 0, cargoListKey = '', lastRender = 0;
+let graphicsLow = false;
+$('graphics').onclick = () => {
+  graphicsLow = !graphicsLow;
+  $('graphics').textContent = graphicsLow ? 'GRAPHICS LOW' : 'GRAPHICS NORMAL';
+  $('graphics').setAttribute('aria-pressed', String(graphicsLow));
+  if (renderer) { renderer.setPixelRatio(graphicsLow ? .65 : Math.min(devicePixelRatio, 1)); resize(); }
+};
 let swipe = null, soundOn = false, audio = null;
 const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const mint = 0xb9f8bd, cyan = 0x64ddd4, amber = 0xfac875, red = 0xff666e;
@@ -94,7 +101,9 @@ socket.on('state', data => {
   $('clickToLook').hidden = nav || touchDevice || document.pointerLockElement === renderer?.domElement || data.phase !== 'playing';
   $('guideCue').hidden = !data.cue; if (data.cue) { $('guideCue').textContent = `NAVIGATOR: ${data.cue.text}`; $('guideCue').classList.toggle('danger', ['DANGER', 'STOP'].includes(data.cue.text)); }
   if (data.cue && data.cue.until !== lastCue) { lastCue = data.cue.until; tone(880, .1, 'sine', .06, 550); }
-  if (nav) {
+  const nextCargoKey = data.roundId + ':' + data.items.map(i => `${i.id}:${i.carrier || ''}:${i.condition}`).join('|');
+  if (nav && nextCargoKey !== cargoListKey) {
+    cargoListKey = nextCargoKey;
     $('cargoList').replaceChildren(...data.items.map(i => { const row = document.createElement('div'), label = document.createElement('span'), value = document.createElement('span'); label.textContent = i.premium ? `★ ${i.name}` : i.carrier ? `↗ ${i.name}` : i.name; value.textContent = `$${Math.round(i.value * i.condition / 100)}`; row.append(label, value); return row; }));
   }
   const cargo = data.items.find(i => i.carrier === socket.id);
@@ -128,7 +137,7 @@ socket.on('state', data => {
 function initGraphics() {
   if (renderer) return;
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1.5 : 2)); renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setPixelRatio(graphicsLow ? .65 : Math.min(devicePixelRatio, 1)); renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   $('scene').append(renderer.domElement);
   scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(72, 1, 0.08, 70);
@@ -159,8 +168,27 @@ function textSprite(text, color = '#b9f8bd', scale = 2.5, depthTest = true) {
 function disposeGroup(group) {
   if (!group) return;
   const geometries = new Set(), materials = new Set();
-  group.traverse(o => { if(o.geometry) geometries.add(o.geometry); if(o.material) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m)); });
+  group.traverse(o => { if(o.isInstancedMesh) o.dispose(); if(o.geometry) geometries.add(o.geometry); if(o.material) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m)); });
   geometries.forEach(g=>g.dispose()); materials.forEach(m=>{m.map?.dispose();m.dispose();}); group.removeFromParent();
+}
+// Draw repeated static boxes together instead of issuing a draw call per trim/bar.
+function batchStaticBoxes(parent) {
+  const groups = new Map();
+  for (const mesh of [...parent.children]) {
+    if (!mesh.isMesh || mesh.geometry.type !== 'BoxGeometry' || mesh.material.transparent) continue;
+    const list = groups.get(mesh.material) || []; list.push(mesh); groups.set(mesh.material, list);
+  }
+  for (const [mat, meshes] of groups) {
+    if (meshes.length < 2) continue;
+    const batch = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, meshes.length);
+    const matrix = new THREE.Matrix4(), scale = new THREE.Matrix4();
+    meshes.forEach((mesh, index) => {
+      mesh.updateMatrix(); const p = mesh.geometry.parameters;
+      scale.makeScale(p.width, p.height, p.depth); matrix.copy(mesh.matrix).multiply(scale);
+      batch.setMatrixAt(index, matrix); parent.remove(mesh); mesh.geometry.dispose();
+    });
+    batch.computeBoundingSphere(); parent.add(batch);
+  }
 }
 function buildWorld(nav) {
   for(const group of [staticGroup,actorGroup,itemGroup,enemyGroup,pingGroup,commandGroup])disposeGroup(group);
@@ -198,7 +226,7 @@ function buildWorld(nav) {
   const homeLight=new THREE.PointLight(mint,8,6,1.5);homeLight.position.set(home.x,2,home.z);staticGroup.add(homeLight);
   for(const h of world.hazards){
     const puddle=new THREE.Mesh(new THREE.CircleGeometry(h.r,32),material(0xb1482e,{emissive:0xe7552b,emissiveIntensity:.65}));puddle.rotation.x=-Math.PI/2;puddle.position.set(h.x,.015,h.z);staticGroup.add(puddle);ring(staticGroup,h.r,0xff9860,h.x,h.z);
-    const light=new THREE.PointLight(0xff6d38,3,4,2);light.position.set(h.x,.35,h.z);staticGroup.add(light);
+    // Emissive breach surfaces keep their glow without a light per breach.
     if(nav){const label=textSprite('BREACH','#ff9060',1.8,false);label.position.set(h.x,1,h.z);staticGroup.add(label);}
   }
   if(nav){
@@ -209,7 +237,7 @@ function buildWorld(nav) {
     // Lamps, suspended pipes and floor markings create the industrial bodycam view.
     for(const [x,z] of [[4,9],[12,4],[13,14],[24,11],[24,21],[5,20]]){
       box(staticGroup,1.4,.06,.3,x,2.9,z,new THREE.MeshBasicMaterial({color:0xc1ddc5}));
-      const lamp=new THREE.PointLight(0xb2d9c8,6,8,1.6);lamp.position.set(x,2.5,z);staticGroup.add(lamp);
+      // Ceiling fixtures glow; ambient light and the flashlight illuminate the room.
     }
     for(const z of [2,10,22]){const pipe=cylinder(staticGroup,.08,.08,26,14,2.9,z,material(0x5a655f));pipe.rotation.z=Math.PI/2;}
     for(let z=18;z<23;z+=.7)box(staticGroup,.65,.006,.17,2,.015,z,new THREE.MeshBasicMaterial({color:0x8ba579}));
@@ -220,6 +248,8 @@ function buildWorld(nav) {
   pingGroup=new THREE.Group();ring(pingGroup,.55,cyan,0,0,.055);const beacon=cylinder(pingGroup,.06,.06,2,0,1,0,new THREE.MeshBasicMaterial({color:cyan,transparent:true,opacity:.55}));pingGroup.add(beacon);scene.add(pingGroup);pingGroup.visible=false;
   tacticalCamera.position.set(14,34,31);tacticalCamera.lookAt(14,0,12);flashlight.visible=!nav;
   if(nav)buildCommandTrailer();
+  batchStaticBoxes(staticGroup);
+  if(commandGroup)batchStaticBoxes(commandGroup);
   resize();
 }
 
@@ -362,8 +392,11 @@ function interpolate(now,current,old) {
   const t=Math.min(1,(now-received)/50);return{y:THREE.MathUtils.lerp(old.y||0,current.y||0,t),x:THREE.MathUtils.lerp(old.x,current.x,t),z:THREE.MathUtils.lerp(old.z,current.z,t)};
 }
 function frame(now) {
-  requestAnimationFrame(frame);const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;
-  if(!renderer||!state||!world||$('game').hidden)return;
+  requestAnimationFrame(frame);let dt=Math.min((now-lastFrame)/1000,.05);
+  if(!renderer||!state||!world||$('game').hidden||document.hidden)return;
+  // Limit high-refresh screens to 60 renders/sec; networking stays at 20 Hz.
+  if(now-lastRender < 1000/60-1 || (state.phase==='finished' && now-lastRender<250))return;
+  lastRender=now; lastFrame=now;
   const nav=state.role==='Navigator';
   if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!$('helpDialog').open){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);

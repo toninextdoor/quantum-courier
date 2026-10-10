@@ -3,3 +3,4 @@
 #commandView{position:absolute;right:14px;top:14px;background:#0a1925db;border-color:#4e7775;color:var(--mint);z-index:2} @media(max-width:760px){#commandView{top:43px;right:9px;font-size:7px;padding:6px}}
 
 .touchActions{bottom:20px;gap:6px}.touchActions button{padding:11px 16px}.touchActions .jump{border-color:#fac875;color:#fac875}
+@media(max-width:760px){.headerRight{flex-wrap:wrap;justify-content:flex-end;max-width:185px;gap:4px}.headerRight .connection{flex-basis:100%;text-align:right}}

@@ -66,3 +66,7 @@ Additional v2.2 checks cover 200 reproducible seeds with 200 distinct wall layou
 ## Technology
 
 Node.js, Express, Socket.io, Three.js, vanilla HTML/CSS and Web Audio. The server simulates movement, wall collision, cargo condition, scoring, enemy navigation and the timer at a 20 Hz fixed step. Clients interpolate positions and render views; the server never accepts client-provided coordinates or scores. Scavengers receive only cargo within 1.8m with an unobstructed path (plus their held cargo), no breach locations, and no Sentinel data. Navigator receives the full tactical state. The bodycam has short visibility; mission command guides routes around unseen threats. Input expires after 350ms without updates. Names/messages use text nodes, and room actions, interaction distance, roles and message rates are checked server-side.
+
+### Graphics performance
+
+Rendering uses a maximum 1x pixel density and batches repeated static walls and trim. Click GRAPHICS NORMAL to select GRAPHICS LOW on slower devices; it reduces render resolution to 65%. The server still simulates and broadcasts at 20 Hz in either mode. Hidden tabs skip rendering; finished rounds render at most four times per second.
