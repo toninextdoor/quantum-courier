@@ -1,6 +1,6 @@
 {
   "name": "quantum-courier",
-  "version": "2.2.0",
+  "version": "2.3.1",
   "private": true,
   "description": "Ghost Shift: asymmetric 3D multiplayer salvage with a spectral Navigator",
   "main": "server.js",

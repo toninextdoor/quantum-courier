@@ -70,3 +70,7 @@ Node.js, Express, Socket.io, Three.js, vanilla HTML/CSS and Web Audio. The serve
 ### Graphics performance
 
 Rendering uses a maximum 1x pixel density and batches repeated static walls and trim. Click GRAPHICS NORMAL to select GRAPHICS LOW on slower devices; it reduces render resolution to 65%. The server still simulates and broadcasts at 20 Hz in either mode. Hidden tabs skip rendering; finished rounds render at most four times per second.
+
+### Sentinel ambience and parkour safety
+
+Scavengers receive a coarse proximity intensity, never Sentinel coordinates. A red vignette grows with proximity, and SOUND ON enables a faster/louder low heartbeat. Warnings remain visible near extraction and while respawn protection is active. Sound starts enabled and unlocks on a player click/key. A quiet warehouse drone plays during the shift. TEST AUDIO / RED previews both effects. The optional four-step course varies position, orientation, step size and rise each shift. Steps touch; the server moves overlapping players to the nearest clear side instead of allowing them to become stuck inside boxes. Release Space/JUMP before each new jump.

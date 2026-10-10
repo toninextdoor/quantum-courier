@@ -95,13 +95,33 @@ function generateMap(seed = randomInt(0x100000000)) {
     const pos=pick(options.length?options:candidates.filter(c=>positions.every(p=>dist(c,p)>1)));
     positions.push(pos);
   }
-  const reverse=rng()<.5,z=4+Math.floor(rng()*3),start=reverse?25:20;
-  const platforms=Array.from({length:4},(_,i)=>({x:start+(reverse?-1:1)*i*1.45-.6,z:z-.65,w:1.2,d:1.3,h:.45*(i+1)}));
+  // Touching steps remove the narrow gaps that could trap a player's collider.
+  const vertical=rng()<.5, reverse=rng()<.5, size=1.15+rng()*.3;
+  const rise=.38+rng()*.07, across=vertical?20.5+rng()*4:2.2+rng()*5;
+  const origin=vertical?2:20;
+  const platforms=Array.from({length:4},(_,i)=>{
+    const along=origin+(reverse?3-i:i)*size;
+    return {x:vertical?across:along,z:vertical?along:across,w:size,d:size,h:Number((rise*(i+1)).toFixed(3))};
+  });
   const end=platforms[3];
   const items=CARGO.map(([name,value,,,kind],id)=>({id,name,value,...positions[id],y:0,kind,condition:100,carrier:null,delivered:false}));
-  items.push({id:8,name:'SKYLINE ARTIFACT',value:450,x:end.x+.6,z:end.z+.65,y:end.h,kind:'relic',premium:true,condition:100,carrier:null,delivered:false});
+  items.push({id:8,name:'SKYLINE ARTIFACT',value:450,x:end.x+end.w/2,z:end.z+end.d/2,y:end.h,kind:'relic',premium:true,condition:100,carrier:null,delivered:false});
   const patrol=[];for(let i=0;i<4;i++)patrol.push({...pick(safe.filter(c=>dist(c,HOME)>10&&!(c.x>19&&c.z<10)))});
   return {seed,walls,hazards,platforms,items,patrol};
+}
+function platformOverlap(a,b) {
+  return a.y < b.h-.02 && Math.hypot(a.x-clamp(a.x,b.x,b.x+b.w),a.z-clamp(a.z,b.z,b.z+b.d)) < RADIUS-.001;
+}
+function resolvePlatformOverlap(a,map) {
+  if(!map.platforms.some(b=>platformOverlap(a,b)))return;
+  const candidates=[];
+  for(const b of map.platforms) {
+    candidates.push({x:b.x-RADIUS-.01,z:a.z},{x:b.x+b.w+RADIUS+.01,z:a.z},
+      {x:a.x,z:b.z-RADIUS-.01},{x:a.x,z:b.z+b.d+RADIUS+.01});
+  }
+  candidates.sort((p,q)=>dist(a,p)-dist(a,q));
+  const clear=candidates.find(p=>!solid(p.x,p.z,RADIUS,map.walls)&&!map.platforms.some(b=>platformOverlap({...p,y:a.y},b)));
+  if(clear){a.x=clear.x;a.z=clear.z;}
 }
 function freshGame(players, now, map = generateMap()) {
   return {
@@ -118,8 +138,9 @@ function createGameServer({ mapFactory = generateMap } = {}) {
   const io = new Server(server, { maxHttpBufferSize: 8192 });
   const rooms = new Map();
   app.get('/vendor/three.module.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules/three/build/three.module.js')));
+  app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.2.0' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.3.1' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : 'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role }) => ({ id, name, role })) });
@@ -172,6 +193,7 @@ function createGameServer({ mapFactory = generateMap } = {}) {
       let floor=0;
       for(const b of g.map.platforms)if(a.x>=b.x&&a.x<=b.x+b.w&&a.z>=b.z&&a.z<=b.z+b.d&&old.y>=b.h-.03&&nextY<=b.h)floor=Math.max(floor,b.h);
       if(a.vy<=0&&nextY<=floor){a.y=floor;a.vy=0;a.grounded=true;}else a.grounded=false;
+      resolvePlatformOverlap(a,g.map);
       a.speed = dist(a, old) / DT; a.steps += a.speed * DT;
       if (carrying && bumped && input.sprint && now - a.bumpAt > 1100) {
         cargoDamage(g, g.items[a.carrying], 12); a.bumpAt = now;
@@ -221,6 +243,8 @@ function createGameServer({ mapFactory = generateMap } = {}) {
         quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
         actors: g.actors.map(a => ({ id: a.id, name: a.name, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
+        // Only a coarse warning intensity reaches bodycams, never enemy coordinates.
+        threat: !navigator && me && room.phase==='playing' ? Math.round(clamp((9-dist(me,g.enemy))/8,0,1)*10)/10 : 0,
         enemy: navigator ? { x: g.enemy.x, z: g.enemy.z, yaw: g.enemy.yaw, mode: g.enemy.mode, target: g.enemy.target } : null,
         ping: g.ping && now < g.ping.until ? g.ping : null, cue: g.cue && now < g.cue.until ? g.cue : null,
         eventId: g.eventId, event: g.event, eventKind: g.eventKind || 'info', outcome: g.outcome,
@@ -238,6 +262,7 @@ function createGameServer({ mapFactory = generateMap } = {}) {
     roles(room); roster(room);
   }
   io.on('connection', socket => {
+    socket.emit('build', {version:'2.3.1'});
     let lastEnter = -Infinity, lastChat = -Infinity, lastInteract = -Infinity, lastGuide = -Infinity;
     socket.on('enter', (data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, now = performance.now();
@@ -325,4 +350,4 @@ if (require.main === module) {
   const game = createGameServer(); game.server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Quantum Courier v2 running on port ${process.env.PORT || 3000}`));
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await game.close(); process.exit(0); });
 }
-module.exports = { createGameServer, solid, route, clearLine, WALLS, HOME, CARGO, HAZARDS, PATROL, generateMap, floorCells };
+module.exports = { createGameServer, solid, route, clearLine, WALLS, HOME, CARGO, HAZARDS, PATROL, generateMap, floorCells, resolvePlatformOverlap, platformOverlap };

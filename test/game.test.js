@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { io } = require('socket.io-client');
-const { createGameServer, solid, route, clearLine, HOME, CARGO, WALLS, HAZARDS, PATROL, generateMap, floorCells } = require('../server');
+const { createGameServer, solid, route, clearLine, HOME, CARGO, WALLS, HAZARDS, PATROL, generateMap, floorCells, resolvePlatformOverlap, platformOverlap } = require('../server');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const request = (socket, event, data) => new Promise((resolve, reject) => socket.timeout(2500).emit(event, data, (err, result) => err ? reject(err) : resolve(result)));
 const next = (socket, event) => new Promise((resolve, reject) => { const timer = setTimeout(() => { socket.off(event, handler); reject(Error(`Timed out waiting for ${event}`)); }, 3000); const handler = data => { clearTimeout(timer); resolve(data); }; socket.once(event, handler); });
@@ -62,9 +62,9 @@ test('multiplayer authority, cargo, guidance, penalties, round result, replay an
 });
 
 test('200 seeded warehouses vary and retain safe access to ordinary cargo and parkour entry',()=>{
-  const layouts=new Set();
+  const layouts=new Set(), courses=new Set();
   for(let seed=1;seed<=200;seed++){
-    const map=generateMap(seed);layouts.add(JSON.stringify(map.walls));
+    const map=generateMap(seed);layouts.add(JSON.stringify(map.walls));courses.add(JSON.stringify(map.platforms));
     assert.deepEqual(map,generateMap(seed),'seed must be reproducible');
     const safe=floorCells(map.walls,map.hazards), reachable=new Set(safe.map(c=>`${c.x},${c.z}`));
     for(const item of map.items.filter(i=>!i.premium))assert.ok(reachable.has(`${item.x},${item.z}`),'cargo must have a breach-free route');
@@ -74,7 +74,7 @@ test('200 seeded warehouses vary and retain safe access to ordinary cargo and pa
     assert.equal(map.items[8].value,450);assert.equal(map.items[8].y,map.platforms[3].h);
     for(const patrol of map.patrol)assert.ok(route(HOME,patrol,map.walls).length);
   }
-  assert.equal(layouts.size,200);
+  assert.equal(layouts.size,200);assert.equal(courses.size,200);
 });
 test('randomized replay, jump authority, platform landing, premium pickup and extraction',async()=>{
   const game=createGameServer();await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const clients=[];
@@ -86,23 +86,53 @@ test('randomized replay, jump authority, platform landing, premium pickup and ex
     runner.emit('input',{jump:true,yaw:0});await delay(150);assert.ok(a.y>.4);const peak=a.y;
     runner.emit('input',{jump:true,y:999,grounded:true});await delay(150);assert.ok(a.y<1.5,'clients cannot teleport vertically');assert.ok(a.y>=peak);
     await delay(850);assert.equal(a.y,0);assert.equal(a.grounded,true);
-    const direction=Math.sign(map.platforms[1].x-map.platforms[0].x),firstStep=map.platforms[0];
-    Object.assign(a,{x:firstStep.x+firstStep.w/2-direction*1.3,z:firstStep.z+firstStep.d/2,y:0,vy:0,grounded:true,safeUntil:Infinity,jumpHeld:false});
+    const axis=Math.abs(map.platforms[1].x-map.platforms[0].x)>.1?'x':'z',other=axis==='x'?'z':'x';
+    const size=axis==='x'?'w':'d',otherSize=axis==='x'?'d':'w';
+    const direction=Math.sign(map.platforms[1][axis]-map.platforms[0][axis]),firstStep=map.platforms[0];
+    Object.assign(a,{[axis]:firstStep[axis]+firstStep[size]/2-direction*1.3,[other]:firstStep[other]+firstStep[otherSize]/2,y:0,vy:0,grounded:true,safeUntil:Infinity,jumpHeld:false});
+    room.players[1].input={};
     for(const step of map.platforms){
-      const goal=step.x+step.w/2,heading=direction>0?Math.PI/2:Math.PI*1.5;
+      const goal=step[axis]+step[size]/2,heading=axis==='x'?(direction>0?Math.PI/2:Math.PI*1.5):(direction>0?Math.PI:0);
       let guard=0;
-      while(Math.abs(a.x-goal)>.18&&guard++<40){runner.emit('input',{forward:1,yaw:heading,jump:true});await delay(50);}
+      while(Math.abs(a[axis]-goal)>.18&&guard++<40){runner.emit('input',{forward:1,yaw:heading,jump:true});await delay(50);}
       runner.emit('input',{forward:0,yaw:heading,jump:false});await delay(750);
-      assert.ok(Math.abs(a.x-goal)<.2,'jump must reach next platform using real movement');assert.equal(a.y,step.h,'jump must land on ascending platform');
+      assert.ok(Math.abs(a[axis]-goal)<.2,'jump must reach next platform using real movement');assert.equal(a.y,step.h,'jump must land on ascending platform');
     }
     const platform=map.platforms[3],premium=g.items[8];Object.assign(a,{x:premium.x,z:premium.z,y:0,vy:0,grounded:true});
     runner.emit('interact');await delay(80);assert.equal(a.carrying,null,'cannot grab high cargo from floor');
-    Object.assign(a,{y:platform.h,vy:0,grounded:true});await delay(380);runner.emit('interact');await delay(70);assert.equal(a.carrying,8);assert.equal(a.y,platform.h,'standing on platform remains stable');
+    Object.assign(a,{x:premium.x,z:premium.z,y:platform.h,vy:0,grounded:true});await delay(380);runner.emit('interact');await delay(70);assert.equal(a.carrying,8);assert.equal(a.y,platform.h,'standing on platform remains stable');
     // Step down onto the adjacent lower platform and ensure its floor catches a fall.
     const lower=map.platforms[2];Object.assign(a,{x:lower.x+lower.w/2,z:lower.z+lower.d/2});await delay(450);assert.equal(a.y,lower.h);
     Object.assign(a,{x:HOME.x,z:HOME.z,y:0,vy:0,grounded:true});await delay(80);assert.equal(g.score,450);
     g.deadline=0;await delay(80);const oldLayout=JSON.stringify(map.walls);const world=next(nav,'world');await request(nav,'start',{});const newWorld=await world;
     assert.notEqual(newWorld.seed,map.seed);assert.notEqual(JSON.stringify(newWorld.walls),oldLayout);
     assert.equal(room.game.items.length,9);assert.equal(room.game.score,0);
+  }finally{clients.forEach(c=>c.disconnect());await game.close();}
+});
+
+test('embedded and edge-falling players escape platforms without entering walls',()=>{
+  for(let seed=1;seed<=40;seed++){
+    const map=generateMap(seed);
+    for(const b of map.platforms){
+      for(const y of [0,b.h-.05]){
+        const a={x:b.x+b.w/2,z:b.z+b.d/2,y};
+        resolvePlatformOverlap(a,map);
+        assert.ok(!map.platforms.some(p=>platformOverlap(a,p)),`embedded player freed in seed ${seed}`);
+        assert.equal(solid(a.x,a.z,.28,map.walls),false);
+      }
+    }
+  }
+});
+test('proximity warnings increase nearby without exposing enemy coordinates',async()=>{
+  const game=createGameServer({mapFactory:()=>generateMap(42)});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const clients=[];
+  try{
+    for(let i=0;i<2;i++){const c=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});clients.push(c);await next(c,'connect');}
+    const [nav,runner]=clients,lobby=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Nav'});const code=(await lobby).code;
+    await request(runner,'enter',{code,name:'Runner'});await request(nav,'start',{});
+    const g=game.rooms.get(code).game,a=g.actors[0];Object.assign(a,{x:22,z:8,safeUntil:0});
+    g.enemy.path=[];g.enemy.recalc=Infinity;Object.assign(g.enemy,{x:22,z:6});
+    await delay(80);const near=await next(runner,'state');assert.ok(near.threat>=.8);assert.equal(near.enemy,null);
+    Object.assign(g.enemy,{x:10,z:8});await delay(80);const far=await next(runner,'state');assert.equal(far.threat,0);
+    a.safeUntil=Infinity;Object.assign(g.enemy,{x:22,z:6});await delay(80);assert.ok((await next(runner,'state')).threat>=.8,'protection does not hide a nearby monster');
   }finally{clients.forEach(c=>c.disconnect());await game.close();}
 });

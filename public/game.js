@@ -16,7 +16,8 @@ $('graphics').onclick = () => {
   $('graphics').setAttribute('aria-pressed', String(graphicsLow));
   if (renderer) { renderer.setPixelRatio(graphicsLow ? .65 : Math.min(devicePixelRatio, 1)); resize(); }
 };
-let swipe = null, soundOn = false, audio = null;
+let threatLevel = 0, lastHeartbeat = 0;
+let swipe = null, soundOn = true, audio = null, ambience = null, audioTestUntil = 0;
 const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const mint = 0xb9f8bd, cyan = 0x64ddd4, amber = 0xfac875, red = 0xff666e;
 function showError(text = '') { $('error').textContent = text; $('error').hidden = !text; }
@@ -24,6 +25,30 @@ function send(event, data) {
   showError(); if (!socket.connected) return showError('Connection unavailable. Wait for reconnection.');
   socket.timeout(5000).emit(event, data, (err, response) => { if (err) showError('Request timed out. Check your connection.'); else if (response?.error) showError(response.error); });
 }
+async function unlockAudio() {
+  if(!soundOn)return;
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    await audio.resume();
+    if(!ambience){
+      ambience=audio.createGain();ambience.gain.value=0;ambience.connect(audio.destination);
+      for(const frequency of [110,113]){const o=audio.createOscillator();o.type='sine';o.frequency.value=frequency;o.connect(ambience);o.start();}
+    }
+  } catch { $('sound').textContent='ENABLE SOUND'; }
+}
+function updateAmbience() {
+  if(!ambience)return;
+  const active=soundOn&&!document.hidden&&state?.phase==='playing';
+  ambience.gain.setTargetAtTime(active?.018+threatLevel*.025:0,audio.currentTime,.3);
+}
+for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(soundOn&&audio?.state!=='running')void unlockAudio();},{capture:true});
+$('testEffects').onclick=async()=>{
+  soundOn=true;await unlockAudio();$('sound').textContent='SOUND ON';$('sound').setAttribute('aria-pressed','true');
+  audioTestUntil=performance.now()+2200;
+  $('testEffects').textContent=audio?.state==='running'?'TESTING…':'CLICK TO ENABLE AUDIO';
+  tone(180,.25,'triangle',.13,100);
+  setTimeout(()=>{ $('testEffects').textContent='TEST AUDIO / RED'; },2300);
+};
 function tone(frequency, duration = 0.12, type = 'sine', volume = 0.06, end = frequency) {
   if (!soundOn || !audio || audio.state !== 'running') return;
   const oscillator = audio.createOscillator(), gain = audio.createGain(), now = audio.currentTime;
@@ -32,8 +57,8 @@ function tone(frequency, duration = 0.12, type = 'sine', volume = 0.06, end = fr
   oscillator.connect(gain); gain.connect(audio.destination); oscillator.start(now); oscillator.stop(now + duration);
 }
 $('sound').onclick = async () => {
-  try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); await audio.resume(); soundOn = !soundOn; $('sound').textContent = soundOn ? 'SOUND ON' : 'SOUND OFF'; $('sound').setAttribute('aria-pressed', String(soundOn)); tone(480); }
-  catch { showError('Sound is unavailable in this browser. You can still play.'); }
+  soundOn=!soundOn;if(soundOn)await unlockAudio();updateAmbience();
+  $('sound').textContent=soundOn?'SOUND ON':'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));tone(480);
 };
 $('create').onclick = () => send('enter', { create: true, name: $('name').value });
 $('join').onclick = () => send('enter', { name: $('name').value, code: $('code').value });
@@ -46,14 +71,16 @@ $('chatInput').addEventListener('focus', release);
 $('chatForm').onsubmit = e => { e.preventDefault(); if ($('chatInput').value.trim()) { socket.emit('chat', $('chatInput').value); $('chatInput').value = ''; } };
 document.querySelectorAll('[data-command]').forEach(b => b.onclick = () => socket.emit('guide', { command: b.dataset.command }));
 function reset() {
-  release(); document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
+  release(); threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
   $('front').hidden = false; $('entry').hidden = false; $('lobby').hidden = true; $('game').hidden = true; $('result').hidden = true;
   $('footer').hidden = false; document.body.classList.remove('inGame'); $('chatLog').replaceChildren();
+  updateAmbience();
   if ($('helpDialog').open) $('helpDialog').close();
 }
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
+socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.3.1')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -69,7 +96,7 @@ socket.on('lobby', data => {
   $('start').disabled = data.host !== socket.id || data.players.length < 2;
   $('start').textContent = data.host === socket.id ? 'Launch ghost shift →' : 'Waiting for host to launch…';
   if (data.phase === 'lobby') {
-    release(); document.exitPointerLock?.(); state = previous = null;
+    release(); document.exitPointerLock?.(); state = previous = null; updateAmbience();
     $('front').hidden = false; $('game').hidden = true; $('result').hidden = true; $('footer').hidden = false; document.body.classList.remove('inGame');
   }
 });
@@ -132,6 +159,7 @@ socket.on('state', data => {
     $('resultDamage').textContent = `$${data.damage}`; $('resultCatches').textContent = data.catches;
     $('again').hidden = lobby?.host !== socket.id; $('replayHelp').textContent = lobby?.host === socket.id ? 'Same crew. Fresh cargo. Ready when you are.' : 'Waiting for the host to launch another shift.';
   }
+  updateAmbience();
   updateEntities(nav);
 });
 function initGraphics() {
@@ -377,7 +405,7 @@ window.addEventListener('keydown',e=>{
   }
 });
 window.addEventListener('keyup',e=>{keys.delete(e.key.length===1?e.key.toLowerCase():e.key);input();});
-window.addEventListener('blur',release);document.addEventListener('visibilitychange',()=>{if(document.hidden)release();});
+window.addEventListener('blur',release);document.addEventListener('visibilitychange',()=>{if(document.hidden)release();updateAmbience();});
 document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer?.domElement&&state?.phase==='playing'){yaw+=e.movementX*.0025;pitch=THREE.MathUtils.clamp(pitch+e.movementY*.002,-.8,.8);}});
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)release();$('clickToLook').hidden=state?.role==='Navigator'||touchDevice||!!document.pointerLockElement||state?.phase!=='playing';});
 $('lockMouse').onclick=()=>{try{const result=renderer?.domElement.requestPointerLock();result?.catch(()=>showError('Mouse capture unavailable. Use ← → to look, or swipe on mobile.'));}catch{showError('Use ← → to turn your view.');}};
@@ -398,6 +426,15 @@ function frame(now) {
   if(now-lastRender < 1000/60-1 || (state.phase==='finished' && now-lastRender<250))return;
   lastRender=now; lastFrame=now;
   const nav=state.role==='Navigator';
+  const threatTarget=now<audioTestUntil ? 1 : !nav&&state.phase==='playing' ? (state.threat||0) : 0;
+  updateAmbience();
+  threatLevel += (threatTarget-threatLevel)*Math.min(1,dt*5);
+  $('threatVignette').style.opacity=String(threatLevel*.8);
+  if(threatLevel>.03 && now-lastHeartbeat>1400-threatLevel*1050){
+    tone(100,.17,'triangle',.025+threatLevel*.08,65);
+    setTimeout(()=>tone(85,.13,'triangle',.02+threatLevel*.06,55),160);
+    lastHeartbeat=now;
+  }
   if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!$('helpDialog').open){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const me=state.actors.find(a=>a.id===socket.id);
@@ -413,11 +450,10 @@ function frame(now) {
     const directions=['N','NE','E','SE','S','SW','W','NW'];$('compass').textContent=`${directions[Math.round(yaw/(Math.PI/4))%8]} · ${Math.round(yaw*180/Math.PI)}°`;
     $('waypoint').hidden=!state.ping;
     if(state.ping){const dx=state.ping.x-me.x,dz=state.ping.z-me.z;let angle=Math.atan2(dx,-dz)-yaw;angle=Math.atan2(Math.sin(angle),Math.cos(angle));const arrow=Math.abs(angle)<.35?'↑':Math.abs(angle)>2.5?'↓':angle>0?'→':'←';$('waypoint').textContent=`${arrow} NAV WAYPOINT · ${Math.hypot(dx,dz).toFixed(1)}m`;}
-    const distance=Infinity; // Classified threats are visible only to mission command.
+    const distance=threatLevel>.05 ? 9-threatLevel*8 : Infinity; // Warning only; no direction or exact location.
     $('dangerOverlay').hidden=distance>7.5;
     if(now-lastSound>(distance<7?650:me.speed>.1?480:1500)){
-      if(distance<7){tone(70,.12,'sine',.08,45);setTimeout(()=>tone(60,.1,'sine',.05),150);}
-      else if(me.speed>.1)tone(95,.045,'triangle',.025,45);
+      if(me.speed>.1)tone(95,.045,'triangle',.025,45);
       lastSound=now;
     }
   }else{$('compass').textContent='↑ N / SPECTRAL';$('waypoint').hidden=true;$('dangerOverlay').hidden=true;}

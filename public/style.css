@@ -4,3 +4,5 @@
 
 .touchActions{bottom:20px;gap:6px}.touchActions button{padding:11px 16px}.touchActions .jump{border-color:#fac875;color:#fac875}
 @media(max-width:760px){.headerRight{flex-wrap:wrap;justify-content:flex-end;max-width:185px;gap:4px}.headerRight .connection{flex-basis:100%;text-align:right}}
+
+#threatVignette{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 30%,#9c142945 65%,#db1730cc 100%)}
