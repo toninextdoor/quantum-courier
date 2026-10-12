@@ -99,3 +99,6 @@ The footer ABOUT panel explains the game and its development. The attached bird 
 
 ## v3.0 optional accounts
 Username/password accounts save one of six recovery badges. Add DATABASE_URL for persistent PostgreSQL storage; read ACCOUNTS.md. Guests can play without a database. Saved avatars appear in the lobby and color the crew suits. Regular accounts are separate from developer access.
+
+## v3.1 UI
+Dark/light themes, top navigation, player identity next to ONLINE, browser settings under the brand and a simplified footer/briefing. The supplied M.V.M key/wave logo replaces the bird. Theme preference persists locally; game visibility and physics do not change. Real leaderboards are not implemented.

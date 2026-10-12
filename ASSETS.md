@@ -12,3 +12,6 @@ The existing repository and Render URL can keep their quantum-courier names. Upl
 
 ## v3.0 recovery avatars
 Six original geometric SVG badges are generated directly in project code under public/assets/avatars. They are not OVO marks. The bird icon is the user-supplied Gemini image, used unchanged; rights to any third-party branding it resembles still need confirmation. M.V.M is presented as a fictional independent identity with no OVO or Drake affiliation.
+
+## v3.1 replacement emblem
+The user supplied Gemini_Generated_Image_rxctl8rxctl8rxct.jpg replaces the earlier bird icon. It shows an M.V.M hotel key, wave and skyline on ivory. The original file is used unchanged in both UI themes, with an ivory logo tile. The earlier bird artwork is no longer included as the active icon.

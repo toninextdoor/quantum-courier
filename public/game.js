@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.0.0';
+import { trolleyLayout } from '/trolley-layout.js?v=3.1.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.0.0';
+import { checkBrowser } from '/self-check.js?v=3.1.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -20,24 +20,26 @@ function applyQuality(value,automatic=false){
   if(renderer){renderer.setPixelRatio(Math.min(devicePixelRatio,qualityRatios[quality]));resize();}
 }
 $('graphics').onclick=()=>{applyQuality((quality+1)%3);try{sessionStorage.setItem('room905-quality',String(quality));}catch{}};
-$('useRecommended').onclick=()=>{$('devicePanel').hidden=true;$('deviceReopen').hidden=false;applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');sessionStorage.setItem('room905-device-collapsed','yes');}catch{}};
+$('useRecommended').onclick=()=>{if($('deviceDialog').open)$('deviceDialog').close();$('devicePanel').hidden=true;$('deviceReopen').hidden=false;applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');sessionStorage.setItem('room905-device-collapsed','yes');}catch{}};
 async function runBrowserCheck(){
   if(checkRunning)return;if(state?.phase==='playing')return showError('Run the browser check between rounds.');
   checkRunning=true;$('checkAgain').disabled=true;$('deviceStatus').textContent='Checking 3D performance…';
   try{
     const result=await checkBrowser(message=>{$('deviceStatus').textContent=message;$('introCheck').textContent=message;});
-    if(!result.supported){$('devicePanel').hidden=false;$('deviceReopen').hidden=true;$('deviceStatus').textContent='3D unavailable on this browser';$('deviceDetails').textContent=result.reason;$('introCheck').textContent='3D unavailable. Open browser readiness for help.';$('create').disabled=$('join').disabled=true;return;}
+    if(!result.supported){$('devicePanel').hidden=false;$('deviceReopen').hidden=false;$('deviceStatus').textContent='3D unavailable on this browser';$('deviceDetails').textContent=result.reason;$('introCheck').textContent='3D unavailable. Open browser readiness for help.';$('create').disabled=$('join').disabled=true;return;}
     recommendedQuality=result.quality;if(qualityAuto)applyQuality(result.quality,true);
     $('create').disabled=$('join').disabled=false;$('useRecommended').hidden=false;
     $('deviceStatus').textContent=`Recommended: ${qualityNames[result.quality]} graphics${result.fps<24?' · performance may be limited':''}`;
     $('deviceDetails').textContent=`Sample scene: about ${Math.round(result.fps)} FPS at ${qualityNames[result.quality]}. ${touchDevice?'Touch controls available.':'Keyboard and mouse controls available.'} ${typeof window.AudioContext==='function'||typeof window.webkitAudioContext==='function'?'Audio supported; click to enable.':'Audio unavailable; visual cues still work.'} This is an estimate, not a guarantee; quality adapts during play unless you choose it manually.`;
     $('introCheck').textContent=`Browser check complete · ${qualityNames[result.quality]} recommended`;
     const pingAt=performance.now();socket.timeout(2000).emit('check:ping',(err)=>{if(!err)$('deviceDetails').textContent+=` Server round trip: ${Math.round(performance.now()-pingAt)} ms (single sample).`;else $('deviceDetails').textContent+=' Server connection slow or unavailable; wait for ONLINE.';});
-  }catch(e){$('devicePanel').hidden=false;$('deviceReopen').hidden=true;$('deviceStatus').textContent='Check could not finish';$('deviceDetails').textContent='Try RUN CHECK again. You can try MINIMAL graphics; a successful check does not replace a real multiplayer playtest.';$('introCheck').textContent='Check incomplete · see browser readiness';applyQuality(2,true);}
+  }catch(e){$('devicePanel').hidden=false;$('deviceReopen').hidden=false;$('deviceStatus').textContent='Check could not finish';$('deviceDetails').textContent='Try RUN CHECK again. You can try MINIMAL graphics; a successful check does not replace a real multiplayer playtest.';$('introCheck').textContent='Check incomplete · see browser readiness';applyQuality(2,true);}
   finally{checkRunning=false;$('checkAgain').disabled=false;}
 }
 $('checkAgain').onclick=runBrowserCheck;
-$('deviceReopen').onclick=()=>{$('devicePanel').hidden=false;$('deviceReopen').hidden=true;try{sessionStorage.removeItem('room905-device-collapsed');}catch{}};
+$('deviceReopen').onclick=()=>{release();document.exitPointerLock?.();$('deviceSlot').append($('devicePanel'));$('devicePanel').hidden=false;$('deviceDialog').showModal();try{sessionStorage.removeItem('room905-device-collapsed');}catch{}};
+$('closeDevice').onclick=()=>$('deviceDialog').close();
+$('deviceDialog').addEventListener('close',()=>{$('devicePanel').hidden=true;$('front').prepend($('devicePanel'));try{sessionStorage.setItem('room905-device-collapsed','yes');}catch{}});
 try{if(sessionStorage.getItem('room905-device-collapsed')==='yes'){$('devicePanel').hidden=true;$('deviceReopen').hidden=false;}}catch{}
 async function dismissIntro(){ $('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();tone(660,.18,'sine',.04);setTimeout(()=>tone(880,.25,'sine',.035),180); }
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
@@ -65,7 +67,7 @@ function turnBook(index){
 }
 $('bookNext').onclick=()=>turnBook(bookIndex+1);$('bookPrev').onclick=()=>turnBook(bookIndex-1);
 window.addEventListener('keydown',e=>{if($('introScreen').hidden)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
-$('replayBriefing').onclick=()=>{turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();};
+$('replayBriefing').onclick=()=>{release();document.exitPointerLock?.();turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();};
 turnBook(0);
 try{if(sessionStorage.getItem('room905-flipbook')==='seen')$('introScreen').hidden=true;}catch{}
 if(!$('introScreen').hidden){document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();}
@@ -169,12 +171,12 @@ function reset() {
   $('front').hidden = false; $('entry').hidden = false; $('lobby').hidden = true; $('game').hidden = true; $('result').hidden = true;
   $('footer').hidden = false; document.body.classList.remove('inGame'); $('chatLog').replaceChildren();
   updateAmbience();
-  for(const id of ['helpDialog','regularDialog','aboutDialog'])if($(id).open)$(id).close();
+  for(const id of ['helpDialog','regularDialog','aboutDialog','deviceDialog'])if($(id).open)$(id).close();
 }
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
-socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
-socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='3.0.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.1.0 · SERVER ${data.version}`; if(data.version!=='3.1.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -218,7 +220,7 @@ socket.on('state', data => {
     currentRound = data.roundId; yaw = me?.yaw || 0; pitch = 0; lastEvent = -1; lastCue = ''; previous = null; release();
     $('result').hidden = true; $('chatLog').replaceChildren();
   }
-  $('front').hidden = true; $('game').hidden = false; $('footer').hidden = true; document.body.classList.add('inGame');
+  $('front').hidden = true; $('game').hidden = false; $('footer').hidden = false; document.body.classList.add('inGame');
   $('sector').textContent = `ROOM 905 / LAYOUT ${data.mapSeed?.toString(16).toUpperCase() || '—'}`;
   $('role').textContent = nav ? 'NAVIGATOR' : 'RECOVERY CREW'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
@@ -539,7 +541,7 @@ function input() {
 function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
-  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e','q'].includes(key)){
     e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');if(key==='q'&&!e.repeat)socket.emit('cargo:drop');input();
   }
@@ -581,7 +583,7 @@ function frame(now) {
     setTimeout(()=>tone(155,.16,'triangle',.06+heartbeatLevel*.12,105),160);
     lastHeartbeat=now;
   }
-  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
+  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const me=state.actors.find(a=>a.id===socket.id);
   for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,pos.y||0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
@@ -616,8 +618,8 @@ function drawAvatars(){
  $('avatarPicker').replaceChildren(...avatarIds.map(id=>{const button=document.createElement('button');button.type='button';button.className='avatarOption';button.setAttribute('aria-label',`${id} avatar`);button.setAttribute('aria-pressed',String(chosenAvatar===id));const img=document.createElement('img');img.src=`/assets/avatars/${id}.svg`;img.alt='';button.append(img);button.onclick=()=>{chosenAvatar=id;drawAvatars();};return button;}));
 }
 function showAccount(user){
- accountUser=user;$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
- $('regularSignIn').textContent=user?`PROFILE · ${user.username}`:'SIGN IN';
+ accountUser=user;refreshHeaderIdentity(user);$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
+ $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';
  $('profileName').textContent=user?`Signed in as ${user.username}`:'';
  $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
  drawAvatars();
@@ -638,3 +640,18 @@ $('saveAvatar').onclick=()=>accountAction('avatar',{avatar:chosenAvatar});
 $('accountLogout').onclick=()=>accountAction('logout');
 $('deleteAccount').onclick=()=>accountAction('delete',{password:$('deletePass').value});
 loadAccount();
+
+function refreshHeaderIdentity(user=accountUser){
+ $('headerUsername').textContent=user?.username||$('name').value.trim()||'Guest';
+ $('guestFace').hidden=!!user;$('headerAvatar').hidden=!user;
+ if(user)$('headerAvatar').src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;
+}
+$('name').addEventListener('input',()=>refreshHeaderIdentity());
+function applyTheme(value){
+ const light=value==='light';document.documentElement.dataset.theme=light?'light':'dark';
+ $('themeToggle').textContent=light?'DARK MODE':'LIGHT MODE';$('themeToggle').setAttribute('aria-label',`Switch to ${light?'dark':'light'} mode`);
+ document.querySelector('meta[name="theme-color"]').content=light?'#f5f1e9':'#0d0b10';
+ try{localStorage.setItem('room905-theme',light?'light':'dark');}catch{}
+}
+$('themeToggle').onclick=()=>applyTheme(document.documentElement.dataset.theme==='light'?'dark':'light');
+applyTheme(document.documentElement.dataset.theme); 

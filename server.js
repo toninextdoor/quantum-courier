@@ -147,7 +147,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   const accounts=installAccounts(app,{store:accountStore,databaseUrl});
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.0.0' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.1.0' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : 'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
@@ -279,7 +279,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.0.0'});
+    socket.emit('build', {version:'3.1.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
