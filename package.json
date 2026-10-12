@@ -1,8 +1,8 @@
 {
   "name": "room-905",
-  "version": "2.5.0",
+  "version": "2.6.1",
   "private": true,
-  "description": "Room 905: asymmetric cooperative haunted hotel heist for 2\u20134 players",
+  "description": "Room 905: an authorized cooperative hotel recovery mission for 2\u20134 players",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

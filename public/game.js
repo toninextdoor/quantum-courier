@@ -1,4 +1,5 @@
 import * as THREE from '/vendor/three.module.js';
+import { checkBrowser } from '/self-check.js?v=2.6.1';
 const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -9,13 +10,38 @@ let items = new Map(), actors = new Map(), currentRound = null;
 let lastFrame = performance.now(), lastSound = 0, lastEvent = -1, lastCue = '';
 const keys = new Set(), touches = new Map();
 let jumpUntil = 0, cargoListKey = '', lastRender = 0;
-let graphicsLow = false;
-$('graphics').onclick = () => {
-  graphicsLow = !graphicsLow;
-  $('graphics').textContent = graphicsLow ? 'GRAPHICS LOW' : 'GRAPHICS NORMAL';
-  $('graphics').setAttribute('aria-pressed', String(graphicsLow));
-  if (renderer) { renderer.setPixelRatio(graphicsLow ? .65 : Math.min(devicePixelRatio, 1)); resize(); }
-};
+const qualityNames=['NORMAL','LOW','MINIMAL'],qualityRatios=[1,.65,.45];
+let quality=0,qualityAuto=true,recommendedQuality=0,checkRunning=false;
+try{const saved=sessionStorage.getItem('room905-quality');if(saved!==null){quality=Math.max(0,Math.min(2,Number(saved)||0));qualityAuto=false;}}catch{}
+function applyQuality(value,automatic=false){
+  quality=value;qualityAuto=automatic;$('graphics').textContent=`GRAPHICS ${qualityNames[quality]}`;$('graphics').setAttribute('aria-label',`Graphics ${qualityNames[quality]}. Click to change.`);
+  if(renderer){renderer.setPixelRatio(Math.min(devicePixelRatio,qualityRatios[quality]));resize();}
+}
+$('graphics').onclick=()=>{applyQuality((quality+1)%3);try{sessionStorage.setItem('room905-quality',String(quality));}catch{}};
+$('useRecommended').onclick=()=>{applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');}catch{}};
+async function runBrowserCheck(){
+  if(checkRunning)return;if(state?.phase==='playing')return showError('Run the browser check between rounds.');
+  checkRunning=true;$('checkAgain').disabled=true;$('deviceStatus').textContent='Checking 3D performance…';
+  try{
+    const result=await checkBrowser(message=>{$('deviceStatus').textContent=message;$('introCheck').textContent=message;});
+    if(!result.supported){$('deviceStatus').textContent='3D unavailable on this browser';$('deviceDetails').textContent=result.reason;$('introCheck').textContent='3D unavailable. Open browser readiness for help.';$('create').disabled=$('join').disabled=true;return;}
+    recommendedQuality=result.quality;if(qualityAuto)applyQuality(result.quality,true);
+    $('create').disabled=$('join').disabled=false;$('useRecommended').hidden=false;
+    $('deviceStatus').textContent=`Recommended: ${qualityNames[result.quality]} graphics${result.fps<24?' · performance may be limited':''}`;
+    $('deviceDetails').textContent=`Sample scene: about ${Math.round(result.fps)} FPS at ${qualityNames[result.quality]}. ${touchDevice?'Touch controls available.':'Keyboard and mouse controls available.'} ${typeof window.AudioContext==='function'||typeof window.webkitAudioContext==='function'?'Audio supported; click to enable.':'Audio unavailable; visual cues still work.'} This is an estimate, not a guarantee; quality adapts during play unless you choose it manually.`;
+    $('introCheck').textContent=`Browser check complete · ${qualityNames[result.quality]} recommended`;
+    const pingAt=performance.now();socket.timeout(2000).emit('check:ping',(err)=>{if(!err)$('deviceDetails').textContent+=` Server round trip: ${Math.round(performance.now()-pingAt)} ms (single sample).`;else $('deviceDetails').textContent+=' Server connection slow or unavailable; wait for ONLINE.';});
+  }catch(e){$('deviceStatus').textContent='Check could not finish';$('deviceDetails').textContent='Try RUN CHECK again. You can try MINIMAL graphics; a successful check does not replace a real multiplayer playtest.';$('introCheck').textContent='Check incomplete · see browser readiness';applyQuality(2,true);}
+  finally{checkRunning=false;$('checkAgain').disabled=false;}
+}
+$('checkAgain').onclick=runBrowserCheck;
+async function dismissIntro(){ $('introScreen').hidden=true;document.querySelector('header').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-intro','seen');}catch{} await unlockAudio();tone(660,.18,'sine',.04);setTimeout(()=>tone(880,.25,'sine',.035),180); }
+$('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
+try{if(sessionStorage.getItem('room905-intro')==='seen')$('introScreen').hidden=true;}catch{}
+if(!$('introScreen').hidden){document.querySelector('header').inert=true;$('front').inert=true;$('enterIntro').focus();}
+applyQuality(quality,qualityAuto);
+setTimeout(runBrowserCheck,0);
+let slowWindows=0,monitorFrames=0,monitorAt=performance.now();
 let threatLevel = 0, lastHeartbeat = 0;
 let swipe = null, soundOn = true, audio = null, ambience = null, audioTestUntil = 0, master = null, analyser = null, audioPending = false, audioWave = null;
 const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -107,7 +133,7 @@ $('chatInput').addEventListener('focus', release);
 $('chatForm').onsubmit = e => { e.preventDefault(); if ($('chatInput').value.trim()) { socket.emit('chat', $('chatInput').value); $('chatInput').value = ''; } };
 document.querySelectorAll('[data-command]').forEach(b => b.onclick = () => socket.emit('guide', { command: b.dataset.command }));
 function reset() {
-  release(); threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
+  release(); $('resetScreen').hidden=true; threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
   $('front').hidden = false; $('entry').hidden = false; $('lobby').hidden = true; $('game').hidden = true; $('result').hidden = true;
   $('footer').hidden = false; document.body.classList.remove('inGame'); $('chatLog').replaceChildren();
   updateAmbience();
@@ -116,7 +142,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
-socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.5.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.6.1')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -126,7 +152,7 @@ socket.on('lobby', data => {
   $('players').replaceChildren(...data.players.map(p => {
     const li = document.createElement('li'), name = document.createElement('strong'), role = document.createElement('span');
     name.textContent = p.name + (p.id === socket.id ? ' · YOU' : '') + (p.id === data.host ? ' · HOST' : '');
-    role.textContent = p.role.toUpperCase(); li.append(name, role); return li;
+    role.textContent = p.role==='Navigator'?'NAVIGATOR':'RECOVERY CREW'; li.append(name, role); return li;
   }));
   $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. Everyone else enters the hotel suite.');
   $('start').disabled = data.host !== socket.id || data.players.length < 2;
@@ -148,6 +174,13 @@ socket.on('world', data => {
 });
 socket.on('state', data => {
   previous = state; state = data; received = performance.now();
+  $('resetScreen').hidden=!data.respawn;
+  if(data.respawn){
+    if(!previous?.respawn)release();
+    $('resetCause').textContent=data.respawn.cause==='sentinel'?'SENTINEL INTERFERENCE':'SIGNAL GAP';
+    $('resetPenalty').textContent=`−${data.respawn.penalty} seconds · sensor reset`;
+    $('resetCountdown').textContent=`Reconnecting in ${Math.max(.1,data.respawn.remaining).toFixed(1)}s…`;
+  }
   const nav = data.role === 'Navigator', me = data.actors.find(a => a.id === socket.id);
   if (currentRound !== data.roundId) {
     currentRound = data.roundId; yaw = me?.yaw || 0; pitch = 0; lastEvent = -1; lastCue = ''; previous = null; release();
@@ -155,7 +188,7 @@ socket.on('state', data => {
   }
   $('front').hidden = true; $('game').hidden = false; $('footer').hidden = true; document.body.classList.add('inGame');
   $('sector').textContent = `ROOM 905 / LAYOUT ${data.mapSeed?.toString(16).toUpperCase() || '—'}`;
-  $('role').textContent = nav ? 'NAVIGATOR' : 'SCAVENGER'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
+  $('role').textContent = nav ? 'NAVIGATOR' : 'RECOVERY CREW'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
   const remaining = Math.ceil(data.remaining); $('time').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   $('time').classList.toggle('urgent', remaining <= 30);
@@ -182,7 +215,7 @@ socket.on('state', data => {
   if (lastEvent !== data.eventId) {
     if (lastEvent !== -1) {
       if (data.eventKind === 'success') { tone(440,.12,'sine',.07,660); setTimeout(()=>tone(880,.2,'sine',.06),130); }
-      else if (['danger','damage'].includes(data.eventKind)) { tone(140,.25,'sawtooth',.035,60); $('viewport').classList.remove('damageFlash'); requestAnimationFrame(()=>$('viewport').classList.add('damageFlash')); }
+      else if (['danger','damage'].includes(data.eventKind)) { tone(140,.25,'sawtooth',.035,60); $('viewport').classList.remove('signalFlash'); requestAnimationFrame(()=>$('viewport').classList.add('signalFlash')); }
       else if (data.eventKind === 'pickup') tone(450,.15,'triangle',.07,850);
     }
     lastEvent = data.eventId;
@@ -201,7 +234,7 @@ socket.on('state', data => {
 function initGraphics() {
   if (renderer) return;
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(graphicsLow ? .65 : Math.min(devicePixelRatio, 1)); renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setPixelRatio(Math.min(devicePixelRatio,qualityRatios[quality])); renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   $('scene').append(renderer.domElement);
   scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(72, 1, 0.08, 70);
@@ -301,7 +334,7 @@ function buildWorld(nav) {
   for(const h of world.hazards){
     const puddle=new THREE.Mesh(new THREE.CircleGeometry(h.r,32),material(0xb1482e,{emissive:0xe7552b,emissiveIntensity:.65}));puddle.rotation.x=-Math.PI/2;puddle.position.set(h.x,.015,h.z);staticGroup.add(puddle);ring(staticGroup,h.r,0xff9860,h.x,h.z);
     // Emissive breach surfaces keep their glow without a light per breach.
-    if(nav){const label=textSprite('BREACH','#ff9060',1.8,false);label.position.set(h.x,1,h.z);staticGroup.add(label);}
+    if(nav){const label=textSprite('SIGNAL GAP','#ff9060',1.8,false);label.position.set(h.x,1,h.z);staticGroup.add(label);}
   }
   if(nav){
     const grid=new THREE.GridHelper(28,28,0x4f8b90,0x304951);grid.position.set(14,.015,12);staticGroup.add(grid);
@@ -391,16 +424,12 @@ function makeActor(name, nav) {
   return g;
 }
 function makeEnemy() {
-  const g=new THREE.Group(), skin=material(0x3e1523,{metalness:.65,roughness:.35}), glow=material(red,{emissive:red,emissiveIntensity:1.2});
-  sphere(g,.42,0,1.03,0,skin);sphere(g,.32,0,1.55,0,skin);box(g,.48,.06,.1,0,1.56,-.29,glow);
-  for(const x of [-1,1]){
-    const arm=box(g,.09,.8,.1,x*.48,.83,0,skin);arm.rotation.z=x*.25;
-    const leg=box(g,.1,.65,.1,x*.24,.35,0,skin);leg.rotation.z=x*-.12;
-    const horn=new THREE.Mesh(new THREE.ConeGeometry(.08,.45,6),skin);horn.position.set(x*.22,1.9,0);horn.rotation.z=x*-.35;g.add(horn);
-    sphere(g,.07,x*.55,.45,-.04,glow);
-  }
-  const light=new THREE.PointLight(red,5,4,2);light.position.y=1.4;g.add(light);
-  const label=textSprite('SENTINEL','#ff666e',2,false);label.position.y=2.4;g.add(label);g.userData.label=label;return g;
+  // Abstract signal beacon: no creature, weapon or injury depiction.
+  const g=new THREE.Group(),metal=material(0x475362,{metalness:.6}),glow=new THREE.MeshBasicMaterial({color:0xfac875,transparent:true,opacity:.7});
+  cylinder(g,.22,.35,.25,0,.15,0,metal);cylinder(g,.055,.055,1.4,0,.9,0,metal);
+  const beacon=new THREE.Mesh(new THREE.OctahedronGeometry(.3),glow);beacon.position.y=1.6;g.add(beacon);
+  ring(g,.65,cyan,0,0,.035);
+  const label=textSprite('SENTINEL / SIGNAL','#fac875',2,false);label.position.y=2.25;g.add(label);g.userData.label=label;return g;
 }
 function updateEntities(nav) {
   if(!scene || !actorGroup || !state)return;
@@ -437,7 +466,7 @@ function onMapClick(e) {
 }
 const mapping={' ':'jump',w:'forward',ArrowUp:'forward',s:'back',ArrowDown:'back',a:'left',d:'right',Shift:'sprint'};
 function input() {
-  if(!state||state.role==='Navigator'||state.phase!=='playing'||!socket.connected)return;
+  if(!state||state.role==='Navigator'||state.respawn||state.phase!=='playing'||!socket.connected)return;
   const held=new Set([...keys].map(k=>mapping[k]).concat([...touches.values()]));
   socket.emit('input',{forward:Number(held.has('forward'))-Number(held.has('back')),strafe:Number(held.has('right'))-Number(held.has('left')),yaw,jump:held.has('jump')||performance.now()<jumpUntil,sprint:held.has('sprint')});
   document.querySelectorAll('[data-move]').forEach(b=>b.classList.toggle('active',held.has(b.dataset.move)));
@@ -445,7 +474,7 @@ function input() {
 function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
-  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open)||state?.phase!=='playing'||state.role==='Navigator')return;
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||state.respawn)return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e'].includes(key)){
     e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');input();
   }
@@ -455,7 +484,7 @@ window.addEventListener('blur',release);document.addEventListener('visibilitycha
 document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer?.domElement&&state?.phase==='playing'){yaw+=e.movementX*.0025;pitch=THREE.MathUtils.clamp(pitch+e.movementY*.002,-.8,.8);}});
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)release();$('clickToLook').hidden=state?.role==='Navigator'||touchDevice||!!document.pointerLockElement||state?.phase!=='playing';});
 $('lockMouse').onclick=()=>{try{const result=renderer?.domElement.requestPointerLock();result?.catch(()=>showError('Mouse capture unavailable. Use ← → to look, or swipe on mobile.'));}catch{showError('Use ← → to turn your view.');}};
-$('touchGrab').onclick=()=>socket.emit('interact');
+$('touchGrab').onclick=()=>{if(!state?.respawn)socket.emit('interact');};
 document.querySelectorAll('[data-move]').forEach(b=>{
   b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);touches.set(e.pointerId,b.dataset.move);if(b.dataset.move==='jump')jumpUntil=performance.now()+150;input();});
   for(const type of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(type,e=>{touches.delete(e.pointerId);input();});
@@ -469,8 +498,11 @@ function frame(now) {
   requestAnimationFrame(frame);let dt=Math.min((now-lastFrame)/1000,.05);
   if(!renderer||!state||!world||$('game').hidden||document.hidden)return;
   // Limit high-refresh screens to 60 renders/sec; networking stays at 20 Hz.
-  if(now-lastRender < 1000/60-1 || (state.phase==='finished' && now-lastRender<250))return;
+  if(now-lastRender < 1000/(quality===2?30:60)-1 || (state.phase==='finished' && now-lastRender<250))return;
   lastRender=now; lastFrame=now;
+  if(state.phase==='playing'&&qualityAuto&&!checkRunning){
+    monitorFrames++;if(now-monitorAt>=2500){const fps=monitorFrames*1000/(now-monitorAt);slowWindows=fps<24?slowWindows+1:0;monitorAt=now;monitorFrames=0;if(slowWindows>=2&&quality<2){applyQuality(quality+1,true);slowWindows=0;$('deviceStatus').textContent=`Adjusted to ${qualityNames[quality]} for smoother play`;}}
+  }else{monitorAt=now;monitorFrames=0;slowWindows=0;}
   const nav=state.role==='Navigator';
   const devActive=devEffect?.until>now;
   const threatTarget=devActive&&['red','combined'].includes(devEffect.kind) ? 1 : !nav&&state.phase==='playing' ? (state.threat||0) : 0;
