@@ -1,16 +1,9 @@
-# Room 905 v3.1.0
+# Room 905 v3.1.1 · deployment repair
 
-Upload server.js, package.json, package-lock.json and the entire public folder, preserving all asset directories. Keep accounts.js from v3.0. If uploading the full ZIP contents, all required files are included. Deploy as before; DATABASE_URL account setup stays the same.
+Upload the full updated project contents, preserving public and its asset directories. Replace BOTH package.json and package-lock.json. In Render keep Build Command npm ci and Start Command npm start. Commit, deploy the latest commit, then hard refresh.
 
-- New supplied M.V.M key/wave/skyline logo replaces the bird icon, including favicon and About artwork.
-- Dark and light UI themes save your choice on this browser. Theme does not reveal hidden obstacles or change game physics/fog.
-- How to Play, About and Sign In/Profile now live at the top.
-- ONLINE shows separately from your callsign/account username and avatar.
-- Browser settings opens from below the brand, including during gameplay. Movement stops while the settings modal is open.
-- Removed the duplicate mission-brief cards and excess cover slogans/seal. The interactive flipbook and in-game rules remain.
-- Version appears in the lower-left footer and developer login; server/client versions appear inside the developer console, not the public ONLINE label.
-- The independent-project/OVO disclaimer remains in the footer and About; account privacy and deletion information remain available.
+The previous app-version edit accidentally changed nested dependency requirements in package-lock.json, including mime-types. This update regenerates the lock from package.json in a clean directory; future releases must change only the top-level app version, never globally replace dependency versions. Node is pinned to the 24.x release line instead of an unbounded >=20 range.
 
-A leaderboard is not fabricated: this update removes the redundant section. Saved match results would be needed for a future real leaderboard.
+The new M.V.M key/wave/skyline logo and Toronto-area lakeshore hotel setting stay. OVO and Drake references are removed from the live UI. The footer describes the independent fictional game. About describes the Greater Toronto Area inspiration without claiming affiliation with real hotels or organizations. Guest access, accounts, themes, rules and privacy notices stay available.
 
-Verification: account/multiplayer regression suite, module syntax, unique DOM IDs and asset serving checks. Browser visual verification still requires a desktop/mobile playtest; the local browser executable is unavailable. No legal compliance guarantee is implied by the disclosure.
+Accounts still need DATABASE_URL. Do not upload private developer credentials or database URLs to the repository. This update does not create a database or change your Render settings automatically.

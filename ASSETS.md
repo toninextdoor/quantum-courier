@@ -1,17 +1,8 @@
-# Room 905 artwork slots
+# Room 905 assets
 
-All included graphics are original placeholders; no OVO, Drake, R.E.P.O. or hotel-brand assets are included.
+- public/assets/room-905-icon.jpg: supplied Gemini-generated M.V.M key, wave and skyline image, used unchanged. It replaces the earlier bird image.
+- public/assets/avatars/*.svg: six original geometric recovery badges drawn in project code.
+- hotel-art-placeholder.svg, logo-placeholder.svg and cover-placeholder.svg: original project placeholders; no third-party brand assets.
+- Inline briefing illustrations, procedural hotel textures and game models: code-generated project graphics.
 
-- public/assets/logo-placeholder.svg: header logo, square 96×96. Replace with your own SVG under this filename.
-- public/assets/hotel-art-placeholder.svg: lobby artwork and in-room framed artwork, 800×400.
-- public/assets/cover-placeholder.svg: cover source, 1200×630. Replace this with your finished cover for submission; a screenshot of final gameplay is another option if the form allows it.
-
-Keep replacements original or use assets for which you have the necessary rights. If using PNG instead of SVG, update the corresponding filenames in public/index.html and public/game.js. Branding is Room 905; the hotel is fictional. Guest rooms use four-letter crew codes so the fixed room number 905 is not confused with the multiplayer join code.
-
-The existing repository and Render URL can keep their quantum-courier names. Upload ZIP contents to the root; don't nest the new room-905 folder inside the repository. Credentials and developer environment variables are unchanged.
-
-## v3.0 recovery avatars
-Six original geometric SVG badges are generated directly in project code under public/assets/avatars. They are not OVO marks. The bird icon is the user-supplied Gemini image, used unchanged; rights to any third-party branding it resembles still need confirmation. M.V.M is presented as a fictional independent identity with no OVO or Drake affiliation.
-
-## v3.1 replacement emblem
-The user supplied Gemini_Generated_Image_rxctl8rxctl8rxct.jpg replaces the earlier bird icon. It shows an M.V.M hotel key, wave and skyline on ivory. The original file is used unchanged in both UI themes, with an ivory logo tile. The earlier bird artwork is no longer included as the active icon.
+The setting is a fictional hotel inspired by the Greater Toronto Area lakeshore. M.V.M is an independent fictional creative identity. No OVO logos, artist recordings or claimed affiliations are used. Confirm rights to any additional assets before including them in the project. The source of supplied AI-generated artwork does not itself establish exclusive rights or guarantee clearance.

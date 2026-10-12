@@ -102,3 +102,6 @@ Username/password accounts save one of six recovery badges. Add DATABASE_URL for
 
 ## v3.1 UI
 Dark/light themes, top navigation, player identity next to ONLINE, browser settings under the brand and a simplified footer/briefing. The supplied M.V.M key/wave logo replaces the bird. Theme preference persists locally; game visibility and physics do not change. Real leaderboards are not implemented.
+
+## v3.1.1 deployment repair
+Rebuilt dependency lock, Node 24.x, independent GTA-inspired hotel identity. On Render use npm ci and npm start. Replace both package files from this package. Never globally replace versions in package-lock.json.
