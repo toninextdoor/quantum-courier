@@ -1,5 +1,5 @@
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=2.6.1';
+import { checkBrowser } from '/self-check.js?v=2.7.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -18,27 +18,55 @@ function applyQuality(value,automatic=false){
   if(renderer){renderer.setPixelRatio(Math.min(devicePixelRatio,qualityRatios[quality]));resize();}
 }
 $('graphics').onclick=()=>{applyQuality((quality+1)%3);try{sessionStorage.setItem('room905-quality',String(quality));}catch{}};
-$('useRecommended').onclick=()=>{applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');}catch{}};
+$('useRecommended').onclick=()=>{$('devicePanel').hidden=true;$('deviceReopen').hidden=false;applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');sessionStorage.setItem('room905-device-collapsed','yes');}catch{}};
 async function runBrowserCheck(){
   if(checkRunning)return;if(state?.phase==='playing')return showError('Run the browser check between rounds.');
   checkRunning=true;$('checkAgain').disabled=true;$('deviceStatus').textContent='Checking 3D performance…';
   try{
     const result=await checkBrowser(message=>{$('deviceStatus').textContent=message;$('introCheck').textContent=message;});
-    if(!result.supported){$('deviceStatus').textContent='3D unavailable on this browser';$('deviceDetails').textContent=result.reason;$('introCheck').textContent='3D unavailable. Open browser readiness for help.';$('create').disabled=$('join').disabled=true;return;}
+    if(!result.supported){$('devicePanel').hidden=false;$('deviceReopen').hidden=true;$('deviceStatus').textContent='3D unavailable on this browser';$('deviceDetails').textContent=result.reason;$('introCheck').textContent='3D unavailable. Open browser readiness for help.';$('create').disabled=$('join').disabled=true;return;}
     recommendedQuality=result.quality;if(qualityAuto)applyQuality(result.quality,true);
     $('create').disabled=$('join').disabled=false;$('useRecommended').hidden=false;
     $('deviceStatus').textContent=`Recommended: ${qualityNames[result.quality]} graphics${result.fps<24?' · performance may be limited':''}`;
     $('deviceDetails').textContent=`Sample scene: about ${Math.round(result.fps)} FPS at ${qualityNames[result.quality]}. ${touchDevice?'Touch controls available.':'Keyboard and mouse controls available.'} ${typeof window.AudioContext==='function'||typeof window.webkitAudioContext==='function'?'Audio supported; click to enable.':'Audio unavailable; visual cues still work.'} This is an estimate, not a guarantee; quality adapts during play unless you choose it manually.`;
     $('introCheck').textContent=`Browser check complete · ${qualityNames[result.quality]} recommended`;
     const pingAt=performance.now();socket.timeout(2000).emit('check:ping',(err)=>{if(!err)$('deviceDetails').textContent+=` Server round trip: ${Math.round(performance.now()-pingAt)} ms (single sample).`;else $('deviceDetails').textContent+=' Server connection slow or unavailable; wait for ONLINE.';});
-  }catch(e){$('deviceStatus').textContent='Check could not finish';$('deviceDetails').textContent='Try RUN CHECK again. You can try MINIMAL graphics; a successful check does not replace a real multiplayer playtest.';$('introCheck').textContent='Check incomplete · see browser readiness';applyQuality(2,true);}
+  }catch(e){$('devicePanel').hidden=false;$('deviceReopen').hidden=true;$('deviceStatus').textContent='Check could not finish';$('deviceDetails').textContent='Try RUN CHECK again. You can try MINIMAL graphics; a successful check does not replace a real multiplayer playtest.';$('introCheck').textContent='Check incomplete · see browser readiness';applyQuality(2,true);}
   finally{checkRunning=false;$('checkAgain').disabled=false;}
 }
 $('checkAgain').onclick=runBrowserCheck;
-async function dismissIntro(){ $('introScreen').hidden=true;document.querySelector('header').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-intro','seen');}catch{} await unlockAudio();tone(660,.18,'sine',.04);setTimeout(()=>tone(880,.25,'sine',.035),180); }
+$('deviceReopen').onclick=()=>{$('devicePanel').hidden=false;$('deviceReopen').hidden=true;try{sessionStorage.removeItem('room905-device-collapsed');}catch{}};
+try{if(sessionStorage.getItem('room905-device-collapsed')==='yes'){$('devicePanel').hidden=true;$('deviceReopen').hidden=false;}}catch{}
+async function dismissIntro(){ $('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();tone(660,.18,'sine',.04);setTimeout(()=>tone(880,.25,'sine',.035),180); }
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
-try{if(sessionStorage.getItem('room905-intro')==='seen')$('introScreen').hidden=true;}catch{}
-if(!$('introScreen').hidden){document.querySelector('header').inert=true;$('front').inert=true;$('enterIntro').focus();}
+const briefingPages=[
+ {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
+ {kicker:'02 / YOUR CREW',title:'One sees the map.<br>The others go inside.',text:'The first player is the Navigator. Everyone else is recovery crew. You need each other’s perspective.',facts:['Navigator: the hologram shows hidden signal gaps, the Sentinel beacon and distant valuables. Click the floor to guide your crew.','Recovery crew: explore in first person. Nearby valuables appear within reach; hidden signals stay off your bodycam.','Use crew chat, quick commands, or talk together. WASD + mouse on desktop; touch arrows + swipe on mobile.'],chapter:'TWO PERSPECTIVES',art:'views'},
+ {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Walk with property. Sprinting into walls costs 12% condition; dropping costs 8%.','Lower condition means less value toward your $600 goal.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
+ {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a signal beacon. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator can track the beacon and signal gaps. Follow their directions.','Signal gaps cost 5 seconds; Sentinel interference costs 10. Property is dropped and sensors reset at the hallway.','After a brief sensor reset, you reconnect at the hallway. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
+];
+const bookIllustrations={
+ door:'<rect x="70" y="12" width="140" height="200" rx="3" fill="#211b25" stroke="#d6b77d" stroke-width="2"/><rect x="112" y="47" width="56" height="35" rx="3" fill="none" stroke="#d6b77d"/><text x="140" y="71" text-anchor="middle" fill="#e8d5a9" font-family="serif" font-size="22">905</text><path d="M184 122h18" stroke="#d6b77d" stroke-width="4"/><path d="M40 213h200" stroke="#6f5b45"/>',
+ views:'<rect x="18" y="32" width="113" height="133" rx="8" fill="#25212b" stroke="#d6b77d"/><path d="M35 51h38v40h40v55H54V112H35z" fill="none" stroke="#79b9b1" stroke-width="2"/><circle cx="78" cy="122" r="5" fill="#d6b77d"/><rect x="152" y="49" width="108" height="133" rx="8" fill="#25212b" stroke="#d6b77d"/><path d="M172 164V87l33-22 33 22v77M196 122h20m-10-10v20" fill="none" stroke="#d6b77d" stroke-width="2"/><path d="M121 198h44m-8-7 8 7-8 7" fill="none" stroke="#79b9b1" stroke-width="2"/>',
+ cargo:'<path d="M44 105 92 79l47 26v61l-47 26-48-26zM44 105l48 26 47-26M92 131v61" fill="#29212a" stroke="#d6b77d" stroke-width="2"/><path d="M158 135h36m-8-8 8 8-8 8" fill="none" stroke="#d6b77d" stroke-width="2"/><ellipse cx="230" cy="163" rx="37" ry="14" fill="#79b9b122" stroke="#79b9b1"/><path d="M212 127h36m-18-16v32" stroke="#79b9b1" stroke-width="2"/><text x="140" y="50" text-anchor="middle" fill="#e8d5a9" font-family="serif" font-size="28">$600</text>',
+ signal:'<path d="M140 113v83M111 197h58" stroke="#d6b77d" stroke-width="4"/><path d="M140 46 172 78l-32 32-32-32z" fill="#d6b77d22" stroke="#d6b77d" stroke-width="2"/><path d="M93 47q-43 30 0 62M187 47q43 30 0 62M69 31q-62 47 0 94M211 31q62 47 0 94" fill="none" stroke="#79b9b1" stroke-width="2"/>'
+};
+let bookIndex=0;
+function turnBook(index){
+ bookIndex=Math.max(0,Math.min(3,index));const p=briefingPages[bookIndex];
+ $('bookKicker').textContent=p.kicker;$('bookTitle').innerHTML=p.title;$('bookText').textContent=p.text;$('bookChapter').textContent=p.chapter;$('bookCounter').textContent=`0${bookIndex+1} / 04`;
+ $('bookFacts').replaceChildren(...p.facts.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+ $('bookArt').innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 225">${bookIllustrations[p.art]}</svg>`;
+ $('bookPrev').disabled=bookIndex===0;$('bookNext').hidden=bookIndex===3;$('enterIntro').hidden=bookIndex!==3;
+ $('bookDots').replaceChildren(...briefingPages.map((_,i)=>{const b=document.createElement('button');b.className=i===bookIndex?'bookDot selected':'bookDot';b.setAttribute('aria-label',`Briefing page ${i+1}`);b.setAttribute('aria-current',String(i===bookIndex));b.onclick=()=>turnBook(i);return b;}));
+ $('bookPage').classList.remove('pageTurn');void $('bookPage').offsetWidth;$('bookPage').classList.add('pageTurn');
+}
+$('bookNext').onclick=()=>turnBook(bookIndex+1);$('bookPrev').onclick=()=>turnBook(bookIndex-1);
+window.addEventListener('keydown',e=>{if($('introScreen').hidden)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
+$('replayBriefing').onclick=()=>{turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();};
+turnBook(0);
+try{if(sessionStorage.getItem('room905-flipbook')==='seen')$('introScreen').hidden=true;}catch{}
+if(!$('introScreen').hidden){document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();}
 applyQuality(quality,qualityAuto);
 setTimeout(runBrowserCheck,0);
 let slowWindows=0,monitorFrames=0,monitorAt=performance.now();
@@ -142,7 +170,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
-socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.6.1')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.7.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -466,7 +494,7 @@ function onMapClick(e) {
 }
 const mapping={' ':'jump',w:'forward',ArrowUp:'forward',s:'back',ArrowDown:'back',a:'left',d:'right',Shift:'sprint'};
 function input() {
-  if(!state||state.role==='Navigator'||state.respawn||state.phase!=='playing'||!socket.connected)return;
+  if(!state||state.role==='Navigator'||!$('introScreen').hidden||state.respawn||state.phase!=='playing'||!socket.connected)return;
   const held=new Set([...keys].map(k=>mapping[k]).concat([...touches.values()]));
   socket.emit('input',{forward:Number(held.has('forward'))-Number(held.has('back')),strafe:Number(held.has('right'))-Number(held.has('left')),yaw,jump:held.has('jump')||performance.now()<jumpUntil,sprint:held.has('sprint')});
   document.querySelectorAll('[data-move]').forEach(b=>b.classList.toggle('active',held.has(b.dataset.move)));
@@ -474,7 +502,7 @@ function input() {
 function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
-  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||state.respawn)return;
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e'].includes(key)){
     e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');input();
   }
