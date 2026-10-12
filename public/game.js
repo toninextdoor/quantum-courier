@@ -17,7 +17,7 @@ $('graphics').onclick = () => {
   if (renderer) { renderer.setPixelRatio(graphicsLow ? .65 : Math.min(devicePixelRatio, 1)); resize(); }
 };
 let threatLevel = 0, lastHeartbeat = 0;
-let swipe = null, soundOn = true, audio = null, ambience = null, audioTestUntil = 0;
+let swipe = null, soundOn = true, audio = null, ambience = null, audioTestUntil = 0, master = null, analyser = null, audioPending = false, audioWave = null;
 const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const mint = 0xb9f8bd, cyan = 0x64ddd4, amber = 0xfac875, red = 0xff666e;
 function showError(text = '') { $('error').textContent = text; $('error').hidden = !text; }
@@ -29,29 +29,35 @@ async function unlockAudio() {
   if(!soundOn)return;
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    if(!master){master=audio.createGain();master.gain.value=.8;analyser=audio.createAnalyser();analyser.fftSize=512;audioWave=new Uint8Array(512);master.connect(analyser);analyser.connect(audio.destination);}
     await audio.resume();
+    audioPending=audio.state!=='running';
     if(!ambience){
-      ambience=audio.createGain();ambience.gain.value=0;ambience.connect(audio.destination);
-      for(const frequency of [110,113]){const o=audio.createOscillator();o.type='sine';o.frequency.value=frequency;o.connect(ambience);o.start();}
+      ambience=audio.createGain();ambience.gain.value=0;ambience.connect(master);
+      for(const frequency of [164,221]){const o=audio.createOscillator();o.type='triangle';o.frequency.value=frequency;o.connect(ambience);o.start();}
+      const buffer=audio.createBuffer(1,audio.sampleRate*2,audio.sampleRate),samples=buffer.getChannelData(0);for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*.4;
+      const noise=audio.createBufferSource(),filter=audio.createBiquadFilter();noise.buffer=buffer;noise.loop=true;filter.type='bandpass';filter.frequency.value=650;filter.Q.value=.8;noise.connect(filter);filter.connect(ambience);noise.start();
     }
-  } catch { $('sound').textContent='ENABLE SOUND'; }
+    updateAmbience();
+  } catch { audioPending=true; $('sound').textContent='ENABLE SOUND'; }
 }
 function updateAmbience() {
   if(!ambience)return;
   const active=soundOn&&!document.hidden&&(state?.phase==='playing'||(devEffect?.until>performance.now()&&['ambience','combined'].includes(devEffect.kind)));
-  ambience.gain.setTargetAtTime(active?.018+threatLevel*.025:0,audio.currentTime,.3);
+  const preview=devEffect?.until>performance.now()&&['ambience','combined'].includes(devEffect.kind);
+  ambience.gain.setTargetAtTime(active?(preview ? .12 : .055+threatLevel*.035):0,audio.currentTime,.3);
 }
-for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(soundOn&&audio?.state!=='running')void unlockAudio();},{capture:true});
-function tone(frequency, duration = 0.12, type = 'sine', volume = 0.06, end = frequency) {
+for(const event of ['pointerdown','keydown'])document.addEventListener(event,e=>{if(e.target.closest?.('#sound'))return;if(soundOn&&audio?.state!=='running')void unlockAudio();},{capture:true});
+function tone(frequency, duration = 0.12, type = 'sine', volume = 0.06, end = frequency, hold = false) {
   if (!soundOn || !audio || audio.state !== 'running') return;
   const oscillator = audio.createOscillator(), gain = audio.createGain(), now = audio.currentTime;
   oscillator.type = type; oscillator.frequency.setValueAtTime(frequency, now); oscillator.frequency.exponentialRampToValueAtTime(Math.max(10, end), now + duration);
-  gain.gain.setValueAtTime(volume, now); gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-  oscillator.connect(gain); gain.connect(audio.destination); oscillator.start(now); oscillator.stop(now + duration);
+  gain.gain.setValueAtTime(volume, now);if(hold)gain.gain.setValueAtTime(volume,now+duration-.04); gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+  oscillator.connect(gain); gain.connect(master); oscillator.start(now); oscillator.stop(now + duration);oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
 }
 $('sound').onclick = async () => {
-  soundOn=!soundOn;if(soundOn)await unlockAudio();updateAmbience();
-  $('sound').textContent=soundOn?'SOUND ON':'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));tone(480);
+  if(!soundOn||audio?.state!=='running'){soundOn=true;await unlockAudio();}else soundOn=false;updateAmbience();
+  $('sound').textContent=soundOn?(audio?.state==='running'?'SOUND ON':'ENABLE SOUND'):'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));tone(480);
 };
 let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
 $('regularSignIn').onclick=()=>$('regularDialog').showModal();
@@ -78,10 +84,17 @@ $('devLogin').onsubmit=e=>{e.preventDefault();devRequest('dev:login',{username:$
 $('devLogout').onclick=()=>{socket.emit('dev:logout');devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devStatus').textContent='Signed out.';};
 $('devReplay').onclick=()=>devRequest('start',{});
 document.querySelectorAll('[data-dev]').forEach(b=>b.onclick=()=>devRequest('dev:action',{action:b.dataset.dev,target:$('devTarget').value}));
+function setLocalPreview(kind){devEffect={kind,until:performance.now()+5000};}
+document.querySelectorAll('[data-local-audio]').forEach(b=>b.onclick=async()=>{
+  soundOn=true;await unlockAudio();$('sound').textContent=audio?.state==='running'?'SOUND ON':'ENABLE SOUND';$('sound').setAttribute('aria-pressed','true');
+  if(b.dataset.localAudio==='speaker')tone(520,1.2,'sine',.25,520,true);else setLocalPreview(b.dataset.localAudio);
+  $('devStatus').textContent=audio?.state==='running'?'Playing on THIS device.':'Audio blocked. Click ENABLE SOUND on this device.';
+});
+$('devVolume').oninput=()=>{if(master)master.gain.value=Number($('devVolume').value);};
 socket.on('dev:effect',async data=>{
   if(data.kind==='clear'){devEffect=null;audioTestUntil=0;return;}
-  devEffect={kind:data.kind,until:performance.now()+5000};
-  if(['heartbeat','ambience','combined'].includes(data.kind)){soundOn=true;await unlockAudio();$('sound').textContent=audio?.state==='running'?'SOUND ON':'ENABLE SOUND';$('sound').setAttribute('aria-pressed','true');}
+  setLocalPreview(data.kind);audioPending=['heartbeat','ambience','combined'].includes(data.kind)&&audio?.state!=='running';
+  if(['heartbeat','ambience','combined'].includes(data.kind)){soundOn=true;if(audio?.state!=='running')$('sound').textContent='ENABLE SOUND';await unlockAudio();$('sound').textContent=audio?.state==='running'?'SOUND ON':'ENABLE SOUND';$('sound').setAttribute('aria-pressed','true');}
 });
 $('create').onclick = () => send('enter', { create: true, name: $('name').value });
 $('join').onclick = () => send('enter', { name: $('name').value, code: $('code').value });
@@ -103,7 +116,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
-socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.4.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.5.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -115,9 +128,9 @@ socket.on('lobby', data => {
     name.textContent = p.name + (p.id === socket.id ? ' · YOU' : '') + (p.id === data.host ? ' · HOST' : '');
     role.textContent = p.role.toUpperCase(); li.append(name, role); return li;
   }));
-  $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. Everyone else enters the warehouse.');
+  $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. Everyone else enters the hotel suite.');
   $('start').disabled = data.host !== socket.id || data.players.length < 2;
-  $('start').textContent = data.host === socket.id ? 'Launch ghost shift →' : 'Waiting for host to launch…';
+  $('start').textContent = data.host === socket.id ? 'Enter Room 905 →' : 'Waiting for host to launch…';
   if (data.phase === 'lobby') {
     release(); document.exitPointerLock?.(); state = previous = null; updateAmbience();
     $('front').hidden = false; $('game').hidden = true; $('result').hidden = true; $('footer').hidden = false; document.body.classList.remove('inGame');
@@ -141,8 +154,8 @@ socket.on('state', data => {
     $('result').hidden = true; $('chatLog').replaceChildren();
   }
   $('front').hidden = true; $('game').hidden = false; $('footer').hidden = true; document.body.classList.add('inGame');
-  $('sector').textContent = `SECTOR ${data.mapSeed?.toString(16).toUpperCase() || '07'} / LIVE LINK`;
-  $('role').textContent = nav ? 'NAVIGATOR' : 'SCAVENGER'; $('viewLabel').textContent = nav ? 'COMMAND TRAILER / CLASSIFIED SENSOR FEED' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
+  $('sector').textContent = `ROOM 905 / LAYOUT ${data.mapSeed?.toString(16).toUpperCase() || '—'}`;
+  $('role').textContent = nav ? 'NAVIGATOR' : 'SCAVENGER'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
   const remaining = Math.ceil(data.remaining); $('time').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   $('time').classList.toggle('urgent', remaining <= 30);
@@ -176,7 +189,7 @@ socket.on('state', data => {
   }
   if (data.phase === 'finished') {
     release(); document.exitPointerLock?.(); $('result').hidden = false;
-    $('resultTitle').textContent = data.outcome === 'won' ? 'You made it out.' : 'The warehouse wins.';
+    $('resultTitle').textContent = data.outcome === 'won' ? 'You made it out.' : 'Room 905 keeps its secrets.';
     $('resultSubtitle').textContent = data.outcome === 'won' ? 'Quota secured. Trust, timing, and a little nerve.' : 'Try the nearby valuables first. Walk with cargo; use the Navigator’s waypoints.';
     $('resultScore').textContent = `$${data.score} / $${data.quota}`; $('resultDeliveries').textContent = data.deliveries;
     $('resultDamage').textContent = `$${data.damage}`; $('resultCatches').textContent = data.catches;
@@ -250,12 +263,12 @@ function buildWorld(nav) {
   scene.background = new THREE.Color(nav ? 0x0b1821 : 0x080d15); scene.fog = nav ? null : new THREE.FogExp2(0x0c1420, .17);
   staticGroup.add(new THREE.HemisphereLight(0xbcd6d3,0x1f2831,nav?2.1:.7));
   const sun = new THREE.DirectionalLight(0x9cc5d2,nav?2:1.1);sun.position.set(3,12,4);staticGroup.add(sun);
-  const floorCanvas=document.createElement('canvas');floorCanvas.width=floorCanvas.height=256;const f=floorCanvas.getContext('2d');f.fillStyle='#273136';f.fillRect(0,0,256,256);f.strokeStyle='#465453';f.lineWidth=2;f.strokeRect(0,0,256,256);f.lineWidth=1;f.strokeStyle='#313e40';f.strokeRect(8,8,240,240);
-  for(let i=0;i<70;i++){f.fillStyle=i%2?'#1c282c':'#394448';f.fillRect((i*73)%256,(i*47)%256,2,2);}
+  const floorCanvas=document.createElement('canvas');floorCanvas.width=floorCanvas.height=256;const f=floorCanvas.getContext('2d');f.fillStyle='#242025';f.fillRect(0,0,256,256);f.strokeStyle='#655346';f.lineWidth=2;f.strokeRect(0,0,256,256);f.lineWidth=1;f.strokeStyle='#37303a';f.strokeRect(8,8,240,240);
+  for(let i=0;i<70;i++){f.fillStyle=i%2?'#342c31':'#51423b';f.fillRect((i*73)%256,(i*47)%256,2,2);}
   const texture=new THREE.CanvasTexture(floorCanvas);texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.repeat.set(world.width,world.depth);
   box(staticGroup,world.width,.16,world.depth,world.width/2,-.09,world.depth/2,material(0xffffff,{map:texture,roughness:.95}));
-  const wallMaterial = nav ? material(0x69b5c4,{transparent:true,opacity:.18,depthWrite:false,metalness:.1}) : material(0x415359,{metalness:.5});
-  const trimMaterial=material(0x192832), emissiveMaterial=new THREE.MeshBasicMaterial({color:nav?0x45888f:0x83afa7});
+  const wallMaterial = nav ? material(0x69b5c4,{transparent:true,opacity:.18,depthWrite:false,metalness:.1}) : material(0x4a3d47,{metalness:.15});
+  const trimMaterial=material(0x30272a), emissiveMaterial=new THREE.MeshBasicMaterial({color:nav?0x45888f:0xb89664});
   for(const wall of world.walls){
     const mesh=box(staticGroup,wall.w,2.7,wall.d,wall.x+wall.w/2,1.35,wall.z+wall.d/2,wallMaterial);
     if(nav){const edges=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),new THREE.LineBasicMaterial({color:0x528c96,transparent:true,opacity:.65}));edges.position.copy(mesh.position);staticGroup.add(edges);}
@@ -266,6 +279,16 @@ function buildWorld(nav) {
       for(let i=1;i<(long?wall.w:wall.d);i+=1.5)box(staticGroup,long?.07:wall.w+.04,2.15,long?wall.d+.04:.07,wall.x+(long?i:wall.w/2),1.2,wall.z+(long?wall.d/2:i),trimMaterial);
     }
   }
+  if(!nav){
+    // Plaque, entrance panel and art frame sit against the existing outer wall.
+    const brass=material(0xb89a67,{metalness:.6}),wood=material(0x281e26);
+    box(staticGroup,1.4,2.35,.04,3.5,1.18,22.97,wood);
+    box(staticGroup,1.55,.06,.055,3.5,2.38,22.94,brass);
+    const plaque=textSprite('ROOM 905','#e2c38f',1.1);plaque.position.set(3.5,2.1,22.91);staticGroup.add(plaque);
+    const loader=new THREE.TextureLoader();const art=loader.load('/assets/hotel-art-placeholder.svg');art.colorSpace=THREE.SRGBColorSpace;
+    box(staticGroup,2.2,1.25,.035,7,1.65,22.97,brass);
+    box(staticGroup,2.05,1.1,.02,7,1.65,22.94,new THREE.MeshBasicMaterial({map:art}));
+  }
   for(const [index,b] of (world.platforms||[]).entries()){
     box(staticGroup,b.w,b.h,b.d,b.x+b.w/2,b.h/2,b.z+b.d/2,material(0x345765,{metalness:.65}));
     box(staticGroup,b.w+.03,.035,b.d+.03,b.x+b.w/2,b.h+.02,b.z+b.d/2,new THREE.MeshBasicMaterial({color:index===3?amber:cyan}));
@@ -273,7 +296,7 @@ function buildWorld(nav) {
   }
   const home=world.home;
   box(staticGroup,3.2,.08,3.2,home.x,.03,home.z,material(0x284b3a,{emissive:0x4aa86c,emissiveIntensity:.35}));ring(staticGroup,home.r,mint,home.x,home.z,.065);
-  const homeLabel=textSprite('EXTRACTION / SAFE','#b9f8bd',nav?3.8:2.4,!nav);homeLabel.position.set(home.x,nav?.8:1.9,home.z);staticGroup.add(homeLabel);
+  const homeLabel=textSprite('HALLWAY / EXTRACTION','#b9f8bd',nav?3.8:2.4,!nav);homeLabel.position.set(home.x,nav?.8:1.9,home.z);staticGroup.add(homeLabel);
   const homeLight=new THREE.PointLight(mint,8,6,1.5);homeLight.position.set(home.x,2,home.z);staticGroup.add(homeLight);
   for(const h of world.hazards){
     const puddle=new THREE.Mesh(new THREE.CircleGeometry(h.r,32),material(0xb1482e,{emissive:0xe7552b,emissiveIntensity:.65}));puddle.rotation.x=-Math.PI/2;puddle.position.set(h.x,.015,h.z);staticGroup.add(puddle);ring(staticGroup,h.r,0xff9860,h.x,h.z);
@@ -282,7 +305,7 @@ function buildWorld(nav) {
   }
   if(nav){
     const grid=new THREE.GridHelper(28,28,0x4f8b90,0x304951);grid.position.set(14,.015,12);staticGroup.add(grid);
-    for(const [text,x,z] of [['A / INTAKE',4,10],['B / STORAGE',13,12],['C / VAULT',23,10]]){const label=textSprite(text,'#7da4b1',3,true);label.position.set(x,.2,z);staticGroup.add(label);}
+    for(const [text,x,z] of [['A / FOYER',4,10],['B / LOUNGE',13,12],['C / PRIVATE SUITE',23,10]]){const label=textSprite(text,'#7da4b1',3,true);label.position.set(x,.2,z);staticGroup.add(label);}
     const north=textSprite('↑ NORTH','#64ddd4',3,false);north.position.set(14,.2,-.7);staticGroup.add(north);
   }else{
     // Lamps, suspended pipes and floor markings create the industrial bodycam view.
@@ -292,7 +315,7 @@ function buildWorld(nav) {
     }
     for(const z of [2,10,22]){const pipe=cylinder(staticGroup,.08,.08,26,14,2.9,z,material(0x5a655f));pipe.rotation.z=Math.PI/2;}
     for(let z=18;z<23;z+=.7)box(staticGroup,.65,.006,.17,2,.015,z,new THREE.MeshBasicMaterial({color:0x8ba579}));
-    const signs=[['INTAKE →',5,2.2,16.98],['STORAGE',12,2,9.98],['VAULT',24,2,16.98]];
+    const signs=[['FOYER →',5,2.2,16.98],['LOUNGE',12,2,9.98],['PRIVATE SUITE',24,2,16.98]];
     for(const [text,x,y,z]of signs){const sign=textSprite(text,'#dce7cc',1.7);sign.position.set(x,y,z);staticGroup.add(sign);}
   }
   enemyGroup=makeEnemy();scene.add(enemyGroup);enemyGroup.visible=false;
@@ -324,7 +347,7 @@ function buildCommandTrailer(){
   for(const x of [-1.8,1.8])for(const z of [-1.4,1.4])box(commandGroup,.2,.9,.2,x,.45,z,steel);
   for(const z of [-1.96,1.96])box(commandGroup,4.5,.04,.045,0,1.13,z,glow);
   for(const x of [-2.23,2.23])box(commandGroup,.045,.04,4,x,1.13,0,glow);
-  const header=textSprite('MISSION COMMAND / SECTOR 07','#b9f8bd',4.8);header.position.set(0,3.3,-4.15);commandGroup.add(header);
+  const header=textSprite('MISSION COMMAND / ROOM 905','#b9f8bd',4.8);header.position.set(0,3.3,-4.15);commandGroup.add(header);
   for(const [text,x]of [['SPECTRAL LINK',-2.8],['CREW BODYCAM',0],['THREAT ANALYSIS',2.8]]){
     box(commandGroup,2.3,1.25,.12,x,2.15,-4.1,dark);
     const screen=textSprite(text,'#64ddd4',2.1);screen.position.set(x,2.15,-3.98);commandGroup.add(screen);
@@ -456,8 +479,8 @@ function frame(now) {
   $('threatVignette').style.opacity=String(threatLevel*.8);
   const heartbeatLevel=devActive&&['heartbeat','combined'].includes(devEffect.kind)?1:devActive&&devEffect.kind==='red'?0:threatLevel;
   if(heartbeatLevel>.03 && now-lastHeartbeat>1400-heartbeatLevel*1050){
-    tone(100,.17,'triangle',.025+heartbeatLevel*.08,65);
-    setTimeout(()=>tone(85,.13,'triangle',.02+heartbeatLevel*.06,55),160);
+    tone(185,.2,'triangle',.09+heartbeatLevel*.15,120);
+    setTimeout(()=>tone(155,.16,'triangle',.06+heartbeatLevel*.12,105),160);
     lastHeartbeat=now;
   }
   if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
@@ -482,7 +505,8 @@ function frame(now) {
       lastSound=now;
     }
   }else{$('compass').textContent='↑ N / SPECTRAL';$('waypoint').hidden=true;$('dangerOverlay').hidden=true;}
-  if($('devDialog').open&&devSignedIn)$('devDiagnostics').textContent=`Room ${lobby?.code||'—'} · ${state.role} · Server threat ${state.threat||0} · Audio ${audio?.state||'not started'} · Draw calls ${renderer.info.render.calls}`;
+  const wave=$('devDialog').open?audioWave:null;if(wave)analyser.getByteTimeDomainData(wave);const rms=wave?Math.sqrt(wave.reduce((sum,v)=>sum+((v-128)/128)**2,0)/wave.length):0;
+  if($('devDialog').open&&devSignedIn)$('devDiagnostics').textContent=`Room ${lobby?.code||'—'} · ${state.role} · Server threat ${state.threat||0} · Audio ${audio?.state||'not started'} · Output ${rms.toFixed(3)} · Draw calls ${renderer.info.render.calls}`;
   renderer.render(scene,nav?commandCamera:camera);
 }
 requestAnimationFrame(frame);

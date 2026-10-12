@@ -1,6 +1,6 @@
-# Quantum Courier: Ghost Shift
+# Room 905
 
-An original asymmetric multiplayer 3D salvage game for 2–4 players. The Navigator sits in a 3D mission-command trailer with a translucent warehouse hologram; the other players explore in first person, retrieve fragile valuables, and depend on the Navigator's guidance.
+An original asymmetric multiplayer 3D salvage game for 2–4 players. The Navigator sits in a 3D mission-command trailer with a translucent hotel suite hologram; the other players explore in first person, retrieve fragile valuables, and depend on the Navigator's guidance.
 
 ## Run locally
 
@@ -15,7 +15,7 @@ Open http://localhost:3000. For another device on your LAN, use http://YOUR-COMP
 
 ## Randomized shifts and parkour (v2.2)
 
-Every launch generates new warehouse partitions, cargo locations, breach positions and Sentinel patrol points. The seed is shown in the HUD. Generation checks that floor cells are connected, and ordinary cargo is selected from the breach-free area reachable from extraction. The entrance and parkour area are reserved. All ordinary cargo is on the floor and provides more than enough value for the $600 quota.
+Every launch generates new hotel suite partitions, cargo locations, breach positions and Sentinel patrol points. The seed is shown in the HUD. Generation checks that floor cells are connected, and ordinary cargo is selected from the breach-free area reachable from extraction. The entrance and parkour area are reserved. All ordinary cargo is on the floor and provides more than enough value for the $600 quota.
 
 An optional four-platform route changes direction and position between rounds. Use Space or the touch JUMP button, release, then press again for each jump. The highest platform contains a $450 SKYLINE ARTIFACT. Jumping, gravity, collision, landings and cargo pickup height are decided on the server. Cargo cannot be grabbed from the floor beneath the final platform. Carry it down and back to extraction to score its remaining value. Falling off returns you to the floor; the course does not add a separate fall penalty.
 
@@ -23,7 +23,7 @@ An optional four-platform route changes direction and position between rounds. U
 
 - The first player is the Navigator. Everyone else is a Scavenger (up to three).
 - Extract $600 worth of valuables within 3 minutes to win.
-- Navigator: the mission-command trailer contains a real miniature 3D warehouse hologram showing crew, valuables, invisible breaches and the Sentinel. FOCUS HOLOGRAM switches to a closer perspective; WIDE TRAILER VIEW returns to the desk. Click an open tile on the hologram to place a 12-second waypoint. Quick commands last 4.5 seconds and describe movements relative to the Scavenger's view.
+- Navigator: the mission-command trailer contains a real miniature 3D hotel suite hologram showing crew, valuables, invisible breaches and the Sentinel. FOCUS HOLOGRAM switches to a closer perspective; WIDE TRAILER VIEW returns to the desk. Click an open tile on the hologram to place a 12-second waypoint. Quick commands last 4.5 seconds and describe movements relative to the Scavenger's view.
 - Scavenger: the bodycam cannot detect breaches or the Sentinel, cargo appears only within grabbing range (1.8m), and fog limits distant visibility. Depend on the Navigator for safe routing, warnings and target locations. Ordinary walls remain visible for basic movement. WASD moves. Mouse capture or left/right arrows turn your view. E grabs the nearest available valuable within 1.8m; E again drops it. On mobile, use touch arrows, swipe the scene to look, and tap GRAB/DROP. Carry valuable objects into the green extraction pad to deposit automatically.
 - Hold Shift or RUN to sprint. Cargo slows you down. Sprinting into walls damages cargo by 12 condition points (at most once per 1.1 seconds). Dropping damages it by 8 points. Sale value is rounded base value × condition / 100. Condition cannot fall below 10%.
 - Breaches appear only on the Navigator hologram. They return you to extraction, subtract 5 seconds, drop held cargo, and damage it by 20 condition points.
@@ -73,8 +73,10 @@ Rendering uses a maximum 1x pixel density and batches repeated static walls and 
 
 ### Sentinel ambience and parkour safety
 
-Scavengers receive a coarse proximity intensity, never Sentinel coordinates. A red vignette grows with proximity, and SOUND ON enables a faster/louder low heartbeat. Warnings remain visible near extraction and while respawn protection is active. Sound starts enabled and unlocks on a player click/key. A quiet warehouse drone plays during the shift. The protected developer console previews effects. The optional four-step course varies position, orientation, step size and rise each shift. Steps touch; the server moves overlapping players to the nearest clear side instead of allowing them to become stuck inside boxes. Release Space/JUMP before each new jump.
+Scavengers receive a coarse proximity intensity, never Sentinel coordinates. A red vignette grows with proximity, and SOUND ON enables a faster/louder low heartbeat. Warnings remain visible near extraction and while respawn protection is active. Sound starts enabled and unlocks on a player click/key. A quiet hotel suite drone plays during the shift. The protected developer console previews effects. The optional four-step course varies position, orientation, step size and rise each shift. Steps touch; the server moves overlapping players to the nearest clear side instead of allowing them to become stuck inside boxes. Release Space/JUMP before each new jump.
 
 ### Developer console
 
 Set DEV_USERNAME and DEV_PASSWORD (12+ characters) on the server; access is disabled without both. Ten sound-button clicks reveal sign-in. Server-verified sessions expire after 30 minutes or disconnect. Login is rate limited. Controls are restricted to the signed-in socket’s current room: individual/all-player effect previews, Sentinel freeze/placement, extraction/parkour relocation, premium cargo, protection, timer extension, simulated breach/catch resets, cargo damage, win/loss and replay. Regular player accounts are a future feature. Do not commit credentials.
+
+Audio debugging: local console tests play on the developer device, including Navigator. Room effect buttons play on selected Scavengers. Output is metered after the volume control; an audio context can be running while device or browser output is muted.

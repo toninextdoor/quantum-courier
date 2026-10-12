@@ -8,3 +8,7 @@
 #threatVignette{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 30%,#9c142945 65%,#db1730cc 100%)}
 
 #devDialog{max-width:650px;max-height:90dvh;overflow:auto}.devHeading{display:flex;align-items:center;justify-content:space-between}.devGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}#devLogin input{display:block;width:100%;margin-bottom:12px}#devTarget{width:100%;padding:12px;background:#102129;color:var(--text);border:1px solid var(--line);font:inherit}.devGrid button{font-size:12px}#devStatus{color:var(--mint)}@media(max-width:450px){.devGrid{grid-template-columns:1fr}}
+
+:root{--bg:#0d0b10;--panel:#1b161e;--line:#40333c;--text:#f2eae0;--muted:#b2a092;--mint:#dfc38d;--amber:#e8c995}.brandIcon{object-fit:contain;flex-shrink:0}.brand{letter-spacing:2px}.terminal{background:linear-gradient(135deg,#292029ee,#19141eee);border-color:#665042}.artSlot{margin-top:24px;max-width:390px;border:1px solid var(--line);border-radius:6px;overflow:hidden}.artSlot img{display:block;width:100%;height:130px;object-fit:cover}.artSlot span{display:block;padding:7px 10px;font:8px monospace;letter-spacing:1px;color:var(--muted)}.hero{padding-top:44px;padding-bottom:44px}@media(max-width:760px){.artSlot img{height:100px}.brandIcon{width:28px;height:28px}}
+
+.greenText{color:#b9f8bd}

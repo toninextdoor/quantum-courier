@@ -18,10 +18,10 @@ const WALLS = [
 ];
 const HAZARDS = [{ x: 6, z: 11, r: 0.9 }, { x: 15, z: 13, r: 1 }, { x: 22, z: 19, r: 1 }];
 const CARGO = [
-  ['NEON RELIC', 150, 5.5, 19.5, 'relic'], ['PHASE CORE', 210, 4.5, 12.5, 'core'],
-  ['GLASS SIGNAL', 180, 3.5, 3.5, 'vase'], ['ION CELL', 160, 11.5, 5.5, 'core'],
-  ['OLD WORLD TV', 250, 14.5, 19.5, 'tv'], ['CHROME IDOL', 240, 23.5, 12.5, 'relic'],
-  ['PRISM VESSEL', 220, 24.5, 3.5, 'vase'], ['VOID RECEIVER', 280, 24.5, 21.5, 'tv']
+  ['ANTIQUE CLOCK', 150, 5.5, 19.5, 'relic'], ['DESIGNER CASE', 210, 4.5, 12.5, 'core'],
+  ['CRYSTAL VASE', 180, 3.5, 3.5, 'vase'], ['SILVER BOX', 160, 11.5, 5.5, 'core'],
+  ['VINTAGE TELEVISION', 250, 14.5, 19.5, 'tv'], ['BRASS SCULPTURE', 240, 23.5, 12.5, 'relic'],
+  ['PORCELAIN VASE', 220, 24.5, 3.5, 'vase'], ['RARE RADIO', 280, 24.5, 21.5, 'tv']
 ];
 const PATROL = [{ x: 24.5, z: 3.5 }, { x: 24.5, z: 20.5 }, { x: 12.5, z: 20.5 }, { x: 12.5, z: 3.5 }];
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -105,7 +105,7 @@ function generateMap(seed = randomInt(0x100000000)) {
   });
   const end=platforms[3];
   const items=CARGO.map(([name,value,,,kind],id)=>({id,name,value,...positions[id],y:0,kind,condition:100,carrier:null,delivered:false}));
-  items.push({id:8,name:'SKYLINE ARTIFACT',value:450,x:end.x+end.w/2,z:end.z+end.d/2,y:end.h,kind:'relic',premium:true,condition:100,carrier:null,delivered:false});
+  items.push({id:8,name:'PENTHOUSE ARTIFACT',value:450,x:end.x+end.w/2,z:end.z+end.d/2,y:end.h,kind:'relic',premium:true,condition:100,carrier:null,delivered:false});
   const patrol=[];for(let i=0;i<4;i++)patrol.push({...pick(safe.filter(c=>dist(c,HOME)>10&&!(c.x>19&&c.z<10)))});
   return {seed,walls,hazards,platforms,items,patrol};
 }
@@ -130,7 +130,7 @@ function freshGame(players, now, map = generateMap()) {
     actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
     items: map.items.map(i=>({...i})),
     enemy: { ...map.patrol[0], yaw: 0, mode: 'patrol', target: null, patrol: 0, path: [], recalc: 0 },
-    ping: null, cue: null, eventId: 0, event: 'Shift started. Find valuables and return them to the green extraction pad.', outcome: null
+    ping: null, cue: null, eventId: 0, event: 'Room 905 is open. Loot valuables and bring them back to the green hallway extraction pad.', outcome: null
   };
 }
 function createGameServer({ mapFactory = generateMap, devUsername = process.env.DEV_USERNAME, devPassword = process.env.DEV_PASSWORD } = {}) {
@@ -144,7 +144,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   app.get('/vendor/three.module.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules/three/build/three.module.js')));
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.4.0' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.5.0' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : 'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role }) => ({ id, name, role })) });
@@ -266,7 +266,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'2.4.0'});
+    socket.emit('build', {version:'2.5.0'});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
       const now=performance.now(),key=socket.handshake.address;
@@ -287,7 +287,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       if(!isDev(socket))return reply({error:'Developer session expired. Sign in again.'});
       if(now-lastDev<200)return reply({error:'Wait a moment.'});lastDev=now;
       const room=rooms.get(socket.data.code);
-      if(!room||room.phase!=='playing')return reply({error:'Launch a shift in your room first.'});
+      if(!room||room.phase!=='playing')return reply({error:'Launch a heist in your room first.'});
       const g=room.game,targets=data?.target==='all'?g.actors:g.actors.filter(a=>a.id===data?.target);
       if(['red','heartbeat','ambience','combined','clear'].includes(data?.action)){
         if(!targets.length)return reply({error:'Select a Scavenger.'});
@@ -411,7 +411,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   return { app, server, io, rooms, close };
 }
 if (require.main === module) {
-  const game = createGameServer(); game.server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Quantum Courier v2 running on port ${process.env.PORT || 3000}`));
+  const game = createGameServer(); game.server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Room 905 v2 running on port ${process.env.PORT || 3000}`));
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await game.close(); process.exit(0); });
 }
 module.exports = { createGameServer, solid, route, clearLine, WALLS, HOME, CARGO, HAZARDS, PATROL, generateMap, floorCells, resolvePlatformOverlap, platformOverlap };
