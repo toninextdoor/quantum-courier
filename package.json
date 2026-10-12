@@ -1,18 +1,19 @@
 {
   "name": "room-905",
-  "version": "2.8.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "Room 905: an authorized cooperative hotel recovery mission for 2\u20134 players",
+  "description": "Room 905: an authorized cooperative hotel recovery mission for 2–4 players",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test --test-concurrency=1"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "express": "^5.1.0",
+    "pg": "^8.23.1",
     "socket.io": "^4.8.1",
     "three": "0.160.1"
   },

@@ -174,6 +174,12 @@ test('grip refresh, automatic release, manual drop and extraction remain authori
   await delay(1100);p.emit('interact');await delay(80);assert.ok(a.gripUntil>initial+900);assert.equal(a.carrying,0);assert.equal(item.condition,100);
   await delay(1100);assert.equal(a.carrying,0,'refresh keeps it held beyond the original deadline');await delay(1100);assert.equal(a.carrying,null);assert.equal(item.carrier,null);assert.equal(item.condition,92);
   p.emit('interact');await delay(80);assert.equal(a.carrying,0);await delay(380);p.emit('cargo:drop');await delay(80);assert.equal(item.condition,84);
-  await delay(380);p.emit('interact');await delay(80);Object.assign(a,{x:HOME.x,z:HOME.z});await delay(80);assert.equal(g.score,126);assert.equal(a.carrying,null);assert.equal(a.gripUntil,null);
+  await delay(380);p.emit('interact');await delay(80);Object.assign(a,{x:HOME.x,z:HOME.z});await delay(80);assert.equal(g.score,126);const ns=await next(nav,"state"),ps=await next(p,"state");assert.deepEqual(ns.recovered,ps.recovered);assert.equal(ps.recovered.length,1);assert.equal(ps.recovered[0].value,126);assert.equal(ps.recovered[0].x,undefined);assert.equal(a.carrying,null);assert.equal(a.gripUntil,null);
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });
+
+ test('trolley value display fills vertically, overflows beside it and resets',async()=>{
+ const fs=require('node:fs');const source=fs.readFileSync(require('node:path').join(__dirname,'../public/trolley-layout.js'),'utf8');
+ const {trolleyLayout}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ assert.equal(trolleyLayout(0).length,0);assert.equal(trolleyLayout(150).length,2);const full=trolleyLayout(600);assert.equal(full.length,8);assert.ok(full.every(s=>!s.overflow));assert.ok(Math.abs(Math.max(...full.map(s=>s.y))-1.61)<1e-9);const excess=trolleyLayout(675);assert.equal(excess.length,9);assert.equal(excess[8].overflow,true);assert.ok(excess[8].x>1);assert.equal(trolleyLayout(NaN).length,0);assert.equal(trolleyLayout(100,0).length,0);
+ });

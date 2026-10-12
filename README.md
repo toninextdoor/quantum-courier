@@ -93,3 +93,9 @@ Signal interruptions now display a private cause-and-penalty card for 1.2 second
 V2.7: the intro is now a four-page illustrated mission flipbook. Next/Back, page dots, keyboard arrows and Skip work; HOW TO PLAY reopens it from the lobby footer. The browser check still runs in the background. USE RECOMMENDED collapses the readiness panel, and BROWSER SETTINGS reopens it.
 
 V2.8: tap E / GRIP at least every 2 seconds while carrying. Q / DROP releases deliberately. Grip expiration drops property and costs 8% condition; a server-driven countdown is shown on the carrying panel. Recovery area uses a brass luggage trolley, green carpet and rectangular corner markings instead of the old circle. Walls have wood wainscot, chair rails, flush sconces and framed art; parkour platforms use padded luggage/ottoman finishes. Decorative geometry does not create new obstacles. Audio is unchanged in this update.
+
+## v2.9: creator notes and recovery display
+The footer ABOUT panel explains the game and its development. The attached bird emblem is used in the header and favicon; confirm artwork rights before submitting. Trolley bundles show quota progress, filling four levels at $600 with final-delivery excess beside the trolley. See ACCOUNTS.md for optional Google account setup.
+
+## v3.0 optional accounts
+Username/password accounts save one of six recovery badges. Add DATABASE_URL for persistent PostgreSQL storage; read ACCOUNTS.md. Guests can play without a database. Saved avatars appear in the lobby and color the crew suits. Regular accounts are separate from developer access.

@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const {installAccounts}=require('./accounts');
 const http = require('node:http');
 const path = require('node:path');
 const { randomInt, createHash, timingSafeEqual } = require('node:crypto');
@@ -127,27 +128,29 @@ function freshGame(players, now, map = generateMap()) {
   return {
     map,
     started: now, deadline: now + ROUND, elapsed: 0, score: 0, deliveries: 0, catches: 0, damage: 0,
-    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
+    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
     items: map.items.map(i=>({...i})),
     enemy: { ...map.patrol[0], yaw: 0, mode: 'patrol', target: null, patrol: 0, path: [], recalc: 0 },
     ping: null, cue: null, eventId: 0, event: 'Room 905 is open. Recover authorized property and bring them back to the green hallway extraction pad.', outcome: null
   };
 }
-function createGameServer({ mapFactory = generateMap, devUsername = process.env.DEV_USERNAME, devPassword = process.env.DEV_PASSWORD } = {}) {
+function createGameServer({ mapFactory = generateMap, devUsername = process.env.DEV_USERNAME, devPassword = process.env.DEV_PASSWORD, accountStore, databaseUrl } = {}) {
   const loginAttempts=new Map();
   const digest=value=>createHash('sha256').update(value).digest();
   const devEnabled=typeof devUsername==='string'&&typeof devPassword==='string'&&devPassword.length>=12;
   const isDev=socket=>socket.data.devUntil>performance.now();
   const app = express(), server = http.createServer(app);
+  app.set('trust proxy',1); // Render HTTPS ingress; rate limits use the nearest forwarded client address.
   const io = new Server(server, { maxHttpBufferSize: 8192 });
   const rooms = new Map();
   app.get('/vendor/three.module.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules/three/build/three.module.js')));
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
+  const accounts=installAccounts(app,{store:accountStore,databaseUrl});
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.8.0' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.0.0' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : 'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
-    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role }) => ({ id, name, role })) });
+    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
   }
   function event(g, text, kind = 'info') { g.eventId++; g.event = text; g.eventKind = kind; }
   function cargoDamage(g, item, amount) {
@@ -216,7 +219,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         const item = g.items[a.carrying]; item.x = a.x; item.z = a.z; item.y = a.y;
         if (dist(a, HOME) < HOME.r && a.y < .2) {
           const value = Math.round(item.value * item.condition / 100);
-          item.delivered = true; item.carrier = null; a.carrying = null; a.gripUntil=null; g.score += value; g.deliveries++;
+          item.recoveredValue=value; item.delivered = true; item.carrier = null; a.carrying = null; a.gripUntil=null; g.score += value; g.deliveries++;
           event(g, `${a.name} extracted ${item.name}: +$${value}.`, 'success');
           if (g.score >= QUOTA) { finish(room, 'won'); return; }
         }
@@ -253,8 +256,9 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       io.to(p.id).emit('state', {
         roundId: g.started, mapSeed:g.map.seed, phase: room.phase, role: p.role, remaining: room.phase === 'finished' ? g.finalRemaining : Math.max(0, (g.deadline - now) / 1000),
         respawn: room.phase==='playing'&&me&&now<(me.respawnUntil||0)?{cause:me.resetCause,penalty:me.resetCause==='sentinel'?10:5,remaining:(me.respawnUntil-now)/1000}:null,
+        recovered: g.items.filter(i=>i.delivered).map(i=>({id:i.id,kind:i.kind,name:i.name,value:i.recoveredValue})),
         quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
-        actors: g.actors.map(a => ({ id: a.id, name: a.name, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
+        actors: g.actors.map(a => ({ id: a.id, name: a.name, avatar:a.avatar, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
         // Only a coarse warning intensity reaches bodycams, never enemy coordinates.
         threat: !navigator && me && room.phase==='playing' ? Math.round(clamp((9-dist(me,g.enemy))/8,0,1)*10)/10 : 0,
@@ -275,7 +279,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'2.8.0'});
+    socket.emit('build', {version:'3.0.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -340,13 +344,15 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       reply({ok:true});snapshot(room,now);
     });
     let lastEnter = -Infinity, lastChat = -Infinity, lastInteract = -Infinity, lastGuide = -Infinity;
-    socket.on('enter', (data, ack) => {
+    socket.on('enter', async (data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, now = performance.now();
       if (now - lastEnter < 400) return reply({ error: 'Wait a moment before trying again.' });
       lastEnter = now;
       if (!data || typeof data !== 'object') return reply({ error: 'Invalid room request.' });
       if (socket.data.code) return reply({ error: 'Leave your room first.' });
-      const name = typeof data.name === 'string' ? data.name.trim().slice(0, 18) : '';
+      let account=null;try{account=await accounts.lookup(socket.handshake.headers.cookie);}catch{return reply({error:'Account service unavailable. Sign out or try again.'});}
+      if(!socket.connected||socket.data.code)return reply({error:'Room request no longer available.'});
+      const name = account?account.username:typeof data.name === 'string' ? data.name.trim().slice(0, 18) : '';
       if (!name) return reply({ error: 'Enter your callsign first.' });
       let room;
       if (data.create === true) {
@@ -361,7 +367,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         if (room.phase === 'playing') return reply({ error: 'Shift in progress. Join when it ends.' });
         if (room.players.length === 4) return reply({ error: 'Room full (4/4).' });
       }
-      room.players.push({ id: socket.id, name, input: {}, inputAt: 0 }); roles(room);
+      room.players.push({ id: socket.id, name, avatar:account?.avatar||'amber', input: {}, inputAt: 0 }); roles(room);
       socket.data.code = room.code; socket.join(room.code); reply({ ok: true }); roster(room);
     });
     socket.on('start', (_data, ack) => {
@@ -421,7 +427,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     while (accumulator >= DT) { for (const room of rooms.values()) if (room.phase === 'playing') tick(room, now); accumulator -= DT; }
     for (const room of rooms.values()) if (room.game && room.phase !== 'lobby') snapshot(room, now);
   }, 50);
-  const close = async () => { clearInterval(timer); await new Promise(resolve => io.close(resolve)); };
+  const close = async () => { clearInterval(timer); await new Promise(resolve => io.close(resolve)); await accounts.close(); };
   return { app, server, io, rooms, close };
 }
 if (require.main === module) {

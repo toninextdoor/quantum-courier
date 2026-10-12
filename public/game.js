@@ -1,11 +1,13 @@
+import { trolleyLayout } from '/trolley-layout.js?v=3.0.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=2.8.0';
+import { checkBrowser } from '/self-check.js?v=3.0.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 let lobby = null, state = null, previous = null, world = null, received = 0, yaw = 0, pitch = 0;
 let commandCamera, commandGroup, hologram, commandFocus = false;
 let renderer, scene, camera, tacticalCamera, flashlight, lightTarget, staticGroup, actorGroup, itemGroup, enemyGroup, pingGroup, carryGroup;
+let trolleyCargoGroup, trolleyKey='';
 let items = new Map(), actors = new Map(), currentRound = null;
 let lastFrame = performance.now(), lastSound = 0, lastEvent = -1, lastCue = '';
 const keys = new Set(), touches = new Map();
@@ -114,7 +116,9 @@ $('sound').onclick = async () => {
   $('sound').textContent=soundOn?(audio?.state==='running'?'SOUND ON':'ENABLE SOUND'):'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));tone(480);
 };
 let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
-$('regularSignIn').onclick=()=>$('regularDialog').showModal();
+$('aboutButton').onclick=()=>{release();document.exitPointerLock?.();$('aboutDialog').showModal();};
+$('closeAbout').onclick=()=>$('aboutDialog').close();
+$('regularSignIn').onclick=()=>{release();document.exitPointerLock?.();$('regularDialog').showModal();loadAccount();};
 $('continueGuest').onclick=()=>$('regularDialog').close();
 $('sound').addEventListener('click',()=>{
   const now=performance.now();soundTapCount=now-soundTapAt>3000?1:soundTapCount+1;soundTapAt=now;
@@ -165,12 +169,12 @@ function reset() {
   $('front').hidden = false; $('entry').hidden = false; $('lobby').hidden = true; $('game').hidden = true; $('result').hidden = true;
   $('footer').hidden = false; document.body.classList.remove('inGame'); $('chatLog').replaceChildren();
   updateAmbience();
-  if (($('helpDialog').open||$('devDialog').open||$('regularDialog').open)) $('helpDialog').close();
+  for(const id of ['helpDialog','regularDialog','aboutDialog'])if($(id).open)$(id).close();
 }
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
-socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.8.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='3.0.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -180,7 +184,7 @@ socket.on('lobby', data => {
   $('players').replaceChildren(...data.players.map(p => {
     const li = document.createElement('li'), name = document.createElement('strong'), role = document.createElement('span');
     name.textContent = p.name + (p.id === socket.id ? ' · YOU' : '') + (p.id === data.host ? ' · HOST' : '');
-    role.textContent = p.role==='Navigator'?'NAVIGATOR':'RECOVERY CREW'; li.append(name, role); return li;
+    role.textContent = p.role==='Navigator'?'NAVIGATOR':'RECOVERY CREW'; const badge=document.createElement('img');badge.className='rosterAvatar';badge.src=`/assets/avatars/${avatarColors[p.avatar]?p.avatar:'amber'}.svg`;badge.alt=`${p.avatar||'amber'} recovery badge`;li.append(badge,name, role); return li;
   }));
   $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. Everyone else enters the hotel suite.');
   $('start').disabled = data.host !== socket.id || data.players.length < 2;
@@ -368,7 +372,7 @@ function buildWorld(nav) {
   box(staticGroup,1.5,.12,.75,home.x,.28,tz,brass);
   for(const x of [-.65,.65]){cylinder(staticGroup,.045,.045,1.9,home.x+x,1.27,tz,brass);sphere(staticGroup,.085,home.x+x,.13,tz+.28,rubber);sphere(staticGroup,.085,home.x+x,.13,tz-.28,rubber);}
   box(staticGroup,1.4,.06,.06,home.x,2.18,tz,brass);
-  box(staticGroup,.54,.45,.35,home.x-.32,.56,tz,material(0x6d4b43));box(staticGroup,.45,.32,.32,home.x+.3,.49,tz,leather);
+  trolleyCargoGroup=new THREE.Group();trolleyCargoGroup.name="recovered-property";staticGroup.add(trolleyCargoGroup);trolleyKey="";
   const homeLabel=textSprite('RECOVERY TROLLEY / SAFE','#b9f8bd',nav?3.8:2.3,!nav);homeLabel.position.set(home.x,nav?.8:2.65,home.z);staticGroup.add(homeLabel);
   const homeLight=new THREE.PointLight(mint,8,6,1.5);homeLight.position.set(home.x,2,home.z);staticGroup.add(homeLight);
   for(const h of world.hazards){
@@ -459,8 +463,23 @@ function makeCargo(item) {
   }
   const ringMesh=ring(group,.5,amber,0,0,.025);group.userData.ring=ringMesh;return group;
 }
-function makeActor(name, nav) {
-  const g=new THREE.Group(), suit=material(0xe3b775,{metalness:.25}), dark=material(0x21323d), visor=material(cyan,{emissive:cyan,emissiveIntensity:.8});
+function updateTrolley(){
+  if(!trolleyCargoGroup||!world)return;
+  const recovered=state.recovered||[],key=`${state.roundId}:${state.score}:${recovered.length}`;
+  if(key===trolleyKey)return;trolleyKey=key;
+  while(trolleyCargoGroup.children.length){const c=trolleyCargoGroup.children[0];trolleyCargoGroup.remove(c);disposeGroup(c);}
+  const slots=trolleyLayout(state.score,state.quota);
+  for(const [index,slot] of slots.entries()){
+    const item=recovered[index%Math.max(1,recovered.length)]||{kind:'core'};
+    const cargo=makeCargo(item);cargo.userData.ring.visible=false;cargo.scale.setScalar(.57);
+    cargo.position.set(world.home.x+slot.x,slot.y,world.home.z+1.35+slot.z);
+    cargo.rotation.y=index%2?.12:-.12;trolleyCargoGroup.add(cargo);
+  }
+  trolleyCargoGroup.userData.fill=Math.min(1,state.score/state.quota);
+}
+const avatarColors={amber:0xe3b775,mint:0x78c6aa,violet:0xa493d2,rose:0xd18d9b,blue:0x80afd1,silver:0xc2c6cd};
+function makeActor(name, nav,avatar='amber') {
+  const g=new THREE.Group(), suit=material(avatarColors[avatar]||avatarColors.amber,{metalness:.25}), dark=material(0x21323d), visor=material(cyan,{emissive:cyan,emissiveIntensity:.8});
   cylinder(g,.25,.3,.48,0,.65,0,suit);sphere(g,.32,0,1.07,0,suit);box(g,.42,.14,.1,0,1.1,-.28,visor);
   for(const x of [-.2,.2]){box(g,.14,.35,.16,x,.23,0,dark);sphere(g,.1,x*1.8,.65,0,dark);}
   box(g,.23,.35,.2,0,.65,.3,dark);cylinder(g,.02,.02,.3,.17,1.45,0,dark);sphere(g,.045,.17,1.61,0,visor);
@@ -478,6 +497,7 @@ function makeEnemy() {
 }
 function updateEntities(nav) {
   if(!scene || !actorGroup || !state)return;
+  updateTrolley();
   const itemIds=new Set(state.items.map(i=>i.id));
   for(const [id,mesh]of items)if(!itemIds.has(id)){itemGroup.remove(mesh);disposeGroup(mesh);items.delete(id);}
   for(const item of state.items){
@@ -488,7 +508,7 @@ function updateEntities(nav) {
     const value=Math.round(item.value*item.condition/100);
     if(nav&&value!==mesh.userData.labelValue){mesh.remove(mesh.userData.valueLabel);disposeGroup(mesh.userData.valueLabel);const label=textSprite(`$${value}`,'#fac875',2.6,false);label.position.y=1.25;mesh.add(label);mesh.userData.valueLabel=label;mesh.userData.labelValue=value;}
   }
-  for(const a of state.actors){if(!actors.has(a.id)){const mesh=makeActor(a.name,nav);actors.set(a.id,mesh);actorGroup.add(mesh);}actors.get(a.id).visible=nav||a.id!==socket.id;}
+  for(const a of state.actors){if(!actors.has(a.id)){const mesh=makeActor(a.name,nav,a.avatar);actors.set(a.id,mesh);actorGroup.add(mesh);}actors.get(a.id).visible=nav||a.id!==socket.id;}
   const cargo=state.items.find(i=>i.carrier===socket.id);
   if(carryGroup.userData.id!==cargo?.id){
     while(carryGroup.children.length){const child=carryGroup.children[0];carryGroup.remove(child);disposeGroup(child);}
@@ -519,7 +539,7 @@ function input() {
 function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
-  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e','q'].includes(key)){
     e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');if(key==='q'&&!e.repeat)socket.emit('cargo:drop');input();
   }
@@ -561,7 +581,7 @@ function frame(now) {
     setTimeout(()=>tone(155,.16,'triangle',.06+heartbeatLevel*.12,105),160);
     lastHeartbeat=now;
   }
-  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
+  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const me=state.actors.find(a=>a.id===socket.id);
   for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,pos.y||0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
@@ -588,3 +608,33 @@ function frame(now) {
   renderer.render(scene,nav?commandCamera:camera);
 }
 requestAnimationFrame(frame);
+
+// Account cookies are HttpOnly; the browser never stores a session token in JavaScript.
+let accountUser=null,accountEnabled=false,chosenAvatar='amber',accountBusy=false;
+const avatarIds=['amber','mint','violet','rose','blue','silver'];
+function drawAvatars(){
+ $('avatarPicker').replaceChildren(...avatarIds.map(id=>{const button=document.createElement('button');button.type='button';button.className='avatarOption';button.setAttribute('aria-label',`${id} avatar`);button.setAttribute('aria-pressed',String(chosenAvatar===id));const img=document.createElement('img');img.src=`/assets/avatars/${id}.svg`;img.alt='';button.append(img);button.onclick=()=>{chosenAvatar=id;drawAvatars();};return button;}));
+}
+function showAccount(user){
+ accountUser=user;$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
+ $('regularSignIn').textContent=user?`PROFILE · ${user.username}`:'SIGN IN';
+ $('profileName').textContent=user?`Signed in as ${user.username}`:'';
+ $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
+ drawAvatars();
+}
+async function loadAccount(){
+ try{const response=await fetch('/api/account',{credentials:'same-origin'}),data=await response.json();if(!response.ok)throw Error(data.error);accountEnabled=data.enabled;showAccount(data.user);$('accountStatus').textContent=data.enabled?(data.user?'Avatar changes apply the next time you join a crew.':'Sign in or choose a badge and create an account.'):'Accounts are awaiting database setup. Guest play is ready.';$('accountLogin').disabled=$('accountRegister').disabled=!data.enabled;}
+ catch(e){$('accountStatus').textContent=e.message;}
+}
+async function accountAction(action,body={}){
+ if(accountBusy)return;if(lobby){$('accountStatus').textContent='Leave your crew before changing your account or avatar.';return;}accountBusy=true;$('accountStatus').textContent='Saving…';
+ try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';socket.disconnect();socket.connect();}
+ catch(e){$('accountStatus').textContent=e.message;}finally{accountBusy=false;}
+}
+$('closeAccount').onclick=()=>$('regularDialog').close();
+$('accountForm').onsubmit=e=>{e.preventDefault();accountAction('login',{username:$('accountUser').value,password:$('accountPass').value});};
+$('accountRegister').onclick=()=>{if($('accountForm').reportValidity())accountAction('register',{username:$('accountUser').value,password:$('accountPass').value,avatar:chosenAvatar});};
+$('saveAvatar').onclick=()=>accountAction('avatar',{avatar:chosenAvatar});
+$('accountLogout').onclick=()=>accountAction('logout');
+$('deleteAccount').onclick=()=>accountAction('delete',{password:$('deletePass').value});
+loadAccount();
