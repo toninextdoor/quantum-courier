@@ -24,7 +24,7 @@ An optional four-platform route changes direction and position between rounds. U
 - The first player is the Navigator. Everyone else is a Scavenger (up to three).
 - Extract $600 worth of valuables within 3 minutes to win.
 - Navigator: the mission-command trailer contains a real miniature 3D hotel suite hologram showing crew, valuables, invisible breaches and the Sentinel. FOCUS HOLOGRAM switches to a closer perspective; WIDE TRAILER VIEW returns to the desk. Click an open tile on the hologram to place a 12-second waypoint. Quick commands last 4.5 seconds and describe movements relative to the Scavenger's view.
-- Scavenger: the bodycam cannot detect breaches or the Sentinel, cargo appears only within grabbing range (1.8m), and fog limits distant visibility. Depend on the Navigator for safe routing, warnings and target locations. Ordinary walls remain visible for basic movement. WASD moves. Mouse capture or left/right arrows turn your view. E grabs the nearest available valuable within 1.8m; E again drops it. On mobile, use touch arrows, swipe the scene to look, and tap GRAB/DROP. Carry valuable objects into the green extraction pad to deposit automatically.
+- Scavenger: the bodycam cannot detect breaches or the Sentinel, cargo appears only within grabbing range (1.8m), and fog limits distant visibility. Depend on the Navigator for safe routing, warnings and target locations. Ordinary walls remain visible for basic movement. WASD moves. Mouse capture or left/right arrows turn your view. E grabs the nearest available valuable within 1.8m; Keep tapping E at least every 2 seconds to refresh grip; Q drops it. On mobile, use touch arrows, swipe the scene to look, and tap GRAB / GRIP and use DROP to release it. Carry valuable objects into the green extraction pad to deposit automatically.
 - Hold Shift or RUN to sprint. Cargo slows you down. Sprinting into walls damages cargo by 12 condition points (at most once per 1.1 seconds). Dropping damages it by 8 points. Sale value is rounded base value × condition / 100. Condition cannot fall below 10%.
 - Breaches appear only on the Navigator hologram. They return you to extraction, subtract 5 seconds, drop held cargo, and damage it by 20 condition points.
 - The Sentinel is invisible to Scavengers and has no position marker; proximity produces a red tint and heartbeat. Only the Navigator can track it. It patrols through actual doorways. It can spot players within 7.5m with unobstructed sight, or hear unloaded sprinting players within 10m. A signal interruption returns you to extraction, subtracts 10 seconds, drops cargo and damages it by 35 condition points. Extraction is safe; respawns have 3 seconds of protection.
@@ -37,7 +37,8 @@ An optional four-platform route changes direction and position between rounds. U
 | --- | --- | --- |
 | Move | WASD; up/down arrows also move | Direction buttons |
 | Look | Click Enter first-person view, then mouse; or left/right arrows | Swipe the 3D view |
-| Grab / drop | E | GRAB / DROP |
+| Grab / refresh grip | E (tap every 2 seconds) | GRAB / GRIP |
+| Drop deliberately | Q | DROP |
 | Jump | Space (release between jumps) | JUMP button |
 | Sprint | Hold Shift | Hold RUN |
 | Release mouse | Esc | Not required |
@@ -90,3 +91,5 @@ Hotel staff have authorized recovery of abandoned property. The Sentinel is an a
 Signal interruptions now display a private cause-and-penalty card for 1.2 seconds before controls return. Players are returned to the hallway and cargo is dropped immediately on the server; movement and grabbing are disabled during the brief reconnect countdown. Other players keep playing. No death or injury is depicted.
 
 V2.7: the intro is now a four-page illustrated mission flipbook. Next/Back, page dots, keyboard arrows and Skip work; HOW TO PLAY reopens it from the lobby footer. The browser check still runs in the background. USE RECOMMENDED collapses the readiness panel, and BROWSER SETTINGS reopens it.
+
+V2.8: tap E / GRIP at least every 2 seconds while carrying. Q / DROP releases deliberately. Grip expiration drops property and costs 8% condition; a server-driven countdown is shown on the carrying panel. Recovery area uses a brass luggage trolley, green carpet and rectangular corner markings instead of the old circle. Walls have wood wainscot, chair rails, flush sconces and framed art; parkour platforms use padded luggage/ottoman finishes. Decorative geometry does not create new obstacles. Audio is unchanged in this update.

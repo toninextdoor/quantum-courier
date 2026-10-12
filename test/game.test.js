@@ -38,7 +38,7 @@ test('multiplayer authority, cargo, guidance, penalties, round result, replay an
     b.emit('guide',{command:'DANGER',x:22,z:5});await delay(65);assert.equal(g.cue.text,'STOP');
     const first=g.items[0];Object.assign(actor,{x:first.x,z:first.z,speed:0});room.players[1].input={};
     b.emit('interact');await delay(70);assert.equal(actor.carrying,first.id);assert.equal(first.carrier,b.id);
-    await delay(380);b.emit('interact');await delay(65);assert.equal(actor.carrying,null);assert.equal(first.condition,92);
+    await delay(380);b.emit('cargo:drop');await delay(65);assert.equal(actor.carrying,null);assert.equal(first.condition,92);
     await delay(380);b.emit('interact');await delay(65);assert.equal(actor.carrying,first.id);
     Object.assign(actor,{x:HOME.x,z:HOME.z});await delay(70);assert.equal(first.delivered,true);assert.equal(g.score,138);assert.equal(actor.carrying,null);
     const second=g.items[1];Object.assign(actor,{x:second.x,z:second.z});await delay(380);b.emit('interact');await delay(65);assert.equal(actor.carrying,1);
@@ -157,9 +157,23 @@ test('developer authorization, room scope, effect broadcasts, logout and disable
   await delay(210);await request(b,'dev:action',{action:'finish'});assert.equal(room.phase,'finished');await request(b,'start',{});assert.equal(room.phase,'playing');
   await delay(210);const deadline=room.game.deadline;await request(b,'dev:action',{action:'breach',target:a.id});assert.equal(room.game.deadline,deadline-5000);assert.equal(room.game.actors[0].x,HOME.x);
   await delay(210);const deadline2=room.game.deadline;await request(b,'dev:action',{action:'catch',target:a.id});assert.equal(room.game.deadline,deadline2-10000);assert.equal(room.game.catches,1);
-  await delay(210);await request(b,'dev:action',{action:'parkour',target:a.id});await delay(210);await request(b,'dev:action',{action:'premium',target:a.id});await delay(210);await request(b,'dev:action',{action:'damage',target:a.id});assert.equal(room.game.items[8].condition,80);
+  await delay(210);await request(b,'dev:action',{action:'parkour',target:a.id});await delay(210);await request(b,'dev:action',{action:'premium',target:a.id});await delay(210);await request(b,'dev:action',{action:'damage',target:a.id});assert.equal(room.game.items[8].condition,80);await delay(210);await request(b,'dev:action',{action:'expire-grip',target:a.id});await delay(80);assert.equal(room.game.actors[0].carrying,null);assert.equal(room.game.items[8].condition,72);
   await delay(210);await request(b,'dev:action',{action:'win'});assert.equal(room.game.outcome,'won');
   b.emit('dev:logout');await delay(210);assert.match((await request(b,'dev:action',{action:'time'})).error,/session/);
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
  const disabled=createGameServer({devUsername:'',devPassword:''});await new Promise(r=>disabled.server.listen(0,'127.0.0.1',r));const s=io(`http://127.0.0.1:${disabled.server.address().port}`);try{await next(s,'connect');assert.match((await request(s,'dev:login',{username:'tester',password:'test-only-password-12345'})).error,/disabled/);}finally{s.disconnect();await disabled.close();}
+});
+
+test('grip refresh, automatic release, manual drop and extraction remain authoritative',async()=>{
+ const game=createGameServer({mapFactory:()=>generateMap(42)});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const cs=[];
+ try{
+  for(let i=0;i<2;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}
+  const [nav,p]=cs,lobby=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Nav'});const code=(await lobby).code;await request(p,'enter',{code,name:'Crew'});await request(nav,'start',{});
+  const g=game.rooms.get(code).game,a=g.actors[0],item=g.items[0];Object.assign(a,{x:item.x,z:item.z,safeUntil:Infinity});
+  p.emit('interact');await delay(80);assert.equal(a.carrying,0);const initial=a.gripUntil;
+  await delay(1100);p.emit('interact');await delay(80);assert.ok(a.gripUntil>initial+900);assert.equal(a.carrying,0);assert.equal(item.condition,100);
+  await delay(1100);assert.equal(a.carrying,0,'refresh keeps it held beyond the original deadline');await delay(1100);assert.equal(a.carrying,null);assert.equal(item.carrier,null);assert.equal(item.condition,92);
+  p.emit('interact');await delay(80);assert.equal(a.carrying,0);await delay(380);p.emit('cargo:drop');await delay(80);assert.equal(item.condition,84);
+  await delay(380);p.emit('interact');await delay(80);Object.assign(a,{x:HOME.x,z:HOME.z});await delay(80);assert.equal(g.score,126);assert.equal(a.carrying,null);assert.equal(a.gripUntil,null);
+ }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });

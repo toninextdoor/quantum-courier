@@ -1,5 +1,5 @@
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=2.7.0';
+import { checkBrowser } from '/self-check.js?v=2.8.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -42,7 +42,7 @@ $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
  {kicker:'02 / YOUR CREW',title:'One sees the map.<br>The others go inside.',text:'The first player is the Navigator. Everyone else is recovery crew. You need each other’s perspective.',facts:['Navigator: the hologram shows hidden signal gaps, the Sentinel beacon and distant valuables. Click the floor to guide your crew.','Recovery crew: explore in first person. Nearby valuables appear within reach; hidden signals stay off your bodycam.','Use crew chat, quick commands, or talk together. WASD + mouse on desktop; touch arrows + swipe on mobile.'],chapter:'TWO PERSPECTIVES',art:'views'},
- {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Walk with property. Sprinting into walls costs 12% condition; dropping costs 8%.','Lower condition means less value toward your $600 goal.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
+ {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Tap E / GRIP at least every 2 seconds to keep hold. Q / DROP releases it. Letting go costs 8% condition.','Walk with property: sprinting into walls costs 12% condition. Less condition means less value.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
  {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a signal beacon. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator can track the beacon and signal gaps. Follow their directions.','Signal gaps cost 5 seconds; Sentinel interference costs 10. Property is dropped and sensors reset at the hallway.','After a brief sensor reset, you reconnect at the hallway. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
 ];
 const bookIllustrations={
@@ -170,7 +170,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
-socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.7.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.8.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -231,14 +231,17 @@ socket.on('state', data => {
     $('cargoList').replaceChildren(...data.items.map(i => { const row = document.createElement('div'), label = document.createElement('span'), value = document.createElement('span'); label.textContent = i.premium ? `★ ${i.name}` : i.carrier ? `↗ ${i.name}` : i.name; value.textContent = `$${Math.round(i.value * i.condition / 100)}`; row.append(label, value); return row; }));
   }
   const cargo = data.items.find(i => i.carrier === socket.id);
-  $('cargoPanel').hidden = !cargo; $('touchGrab').textContent = cargo ? 'DROP' : 'GRAB';
+  $('cargoPanel').hidden = !cargo; $('touchGrab').textContent = cargo ? 'GRIP' : 'GRAB';
+  $('touchDrop').hidden=!cargo;
   if (cargo) {
+    const grip=Math.max(0,Math.min(1,(me?.gripRemaining||0)/2));$('gripFill').style.width=`${grip*100}%`;$('gripTime').textContent=`${(me?.gripRemaining||0).toFixed(1)}s · TAP ${touchDevice?'GRIP':'E'}`;$('cargoPanel').classList.toggle('gripUrgent',grip<.35);
     $('cargoName').textContent = cargo.name; $('cargoValue').textContent = `$${Math.round(cargo.value * cargo.condition / 100)}`;
     $('cargoCondition').textContent = `${cargo.condition}% INTACT`; $('conditionBar').style.width = `${cargo.condition}%`;
     $('conditionBar').style.background = cargo.condition < 60 ? '#ff666e' : '#b9f8bd';
   }
+  $('interactPrompt').hidden=touchDevice&&!!cargo;
   const near = me && data.items.filter(i => !i.carrier && Math.hypot(i.x - me.x, i.z - me.z) < 1.8 && Math.abs((me.y||0)-(i.y||0))<.7).sort((a,b)=>Math.hypot(a.x-me.x,a.z-me.z)-Math.hypot(b.x-me.x,b.z-me.z))[0];
-  $('interactPrompt').textContent = nav ? '' : cargo ? `${touchDevice ? 'DROP' : '[E] DROP'} · return to extraction` : near ? `${touchDevice ? 'GRAB' : '[E] GRAB'} ${near.name} · $${Math.round(near.value * near.condition / 100)}` : '';
+  $('interactPrompt').textContent = nav ? '' : cargo ? `${touchDevice ? 'TAP GRIP' : '[E] KEEP GRIP · [Q] DROP'} · return to trolley` : near ? `${touchDevice ? 'GRAB' : '[E] GRAB'} ${near.name} · $${Math.round(near.value * near.condition / 100)}` : '';
   $('event').textContent = data.event;
   if (lastEvent !== data.eventId) {
     if (lastEvent !== -1) {
@@ -269,7 +272,7 @@ function initGraphics() {
   commandCamera = new THREE.PerspectiveCamera(55, 1, .05, 80);
   camera.rotation.order = 'YXZ'; tacticalCamera = new THREE.OrthographicCamera(-18, 18, 18, -18, .1, 100);
   scene.add(camera); carryGroup = new THREE.Group(); camera.add(carryGroup);
-  flashlight = new THREE.SpotLight(0xd2efda, 16, 18, Math.PI / 5, .6, 1.3); lightTarget = new THREE.Object3D(); scene.add(flashlight, lightTarget); flashlight.target = lightTarget;
+  flashlight = new THREE.SpotLight(0xe9e1cf, 16, 18, Math.PI / 5, .6, 1.3); lightTarget = new THREE.Object3D(); scene.add(flashlight, lightTarget); flashlight.target = lightTarget;
   renderer.domElement.addEventListener('click', onMapClick);
   renderer.domElement.addEventListener('pointerdown', e => { if (!touchDevice || state?.role === 'Navigator') return; renderer.domElement.setPointerCapture(e.pointerId); swipe = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
   renderer.domElement.addEventListener('pointermove', e => { if (!swipe || swipe.id !== e.pointerId || state?.phase !== 'playing') return; yaw += (e.clientX - swipe.x) * .006; pitch = THREE.MathUtils.clamp(pitch + (e.clientY - swipe.y) * .004, -.8, .8); swipe.x = e.clientX; swipe.y = e.clientY; });
@@ -322,13 +325,13 @@ function buildWorld(nav) {
   items.clear(); actors.clear();
   staticGroup = new THREE.Group(); actorGroup=new THREE.Group(); itemGroup=new THREE.Group(); scene.add(staticGroup,actorGroup,itemGroup);
   scene.background = new THREE.Color(nav ? 0x0b1821 : 0x080d15); scene.fog = nav ? null : new THREE.FogExp2(0x0c1420, .17);
-  staticGroup.add(new THREE.HemisphereLight(0xbcd6d3,0x1f2831,nav?2.1:.7));
-  const sun = new THREE.DirectionalLight(0x9cc5d2,nav?2:1.1);sun.position.set(3,12,4);staticGroup.add(sun);
-  const floorCanvas=document.createElement('canvas');floorCanvas.width=floorCanvas.height=256;const f=floorCanvas.getContext('2d');f.fillStyle='#242025';f.fillRect(0,0,256,256);f.strokeStyle='#655346';f.lineWidth=2;f.strokeRect(0,0,256,256);f.lineWidth=1;f.strokeStyle='#37303a';f.strokeRect(8,8,240,240);
+  staticGroup.add(new THREE.HemisphereLight(nav?0xbcd6d3:0xd9c7a7,0x1f2831,nav?2.1:.9));
+  const sun = new THREE.DirectionalLight(nav?0x9cc5d2:0xf3dcb9,nav?2:1.1);sun.position.set(3,12,4);staticGroup.add(sun);
+  const floorCanvas=document.createElement('canvas');floorCanvas.width=floorCanvas.height=256;const f=floorCanvas.getContext('2d');f.fillStyle='#242025';f.fillRect(0,0,256,256);f.strokeStyle='#655346';f.lineWidth=2;f.strokeRect(0,0,256,256);f.lineWidth=1;f.strokeStyle='#37303a';f.strokeRect(8,8,240,240);f.strokeStyle='#75614b';for(let y=0;y<256;y+=32){f.beginPath();f.moveTo(0,y);f.lineTo(256,y);f.stroke();}
   for(let i=0;i<70;i++){f.fillStyle=i%2?'#342c31':'#51423b';f.fillRect((i*73)%256,(i*47)%256,2,2);}
   const texture=new THREE.CanvasTexture(floorCanvas);texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.repeat.set(world.width,world.depth);
   box(staticGroup,world.width,.16,world.depth,world.width/2,-.09,world.depth/2,material(0xffffff,{map:texture,roughness:.95}));
-  const wallMaterial = nav ? material(0x69b5c4,{transparent:true,opacity:.18,depthWrite:false,metalness:.1}) : material(0x4a3d47,{metalness:.15});
+  const wallMaterial = nav ? material(0x69b5c4,{transparent:true,opacity:.18,depthWrite:false,metalness:.1}) : material(0x51404d,{metalness:.08,roughness:.9});
   const trimMaterial=material(0x30272a), emissiveMaterial=new THREE.MeshBasicMaterial({color:nav?0x45888f:0xb89664});
   for(const wall of world.walls){
     const mesh=box(staticGroup,wall.w,2.7,wall.d,wall.x+wall.w/2,1.35,wall.z+wall.d/2,wallMaterial);
@@ -336,8 +339,9 @@ function buildWorld(nav) {
     else{
       box(staticGroup,wall.w+.02,.16,wall.d+.02,wall.x+wall.w/2,.13,wall.z+wall.d/2,trimMaterial);
       box(staticGroup,wall.w+.025,.04,wall.d+.025,wall.x+wall.w/2,2.35,wall.z+wall.d/2,emissiveMaterial);
-      const long=wall.w>wall.d;
-      for(let i=1;i<(long?wall.w:wall.d);i+=1.5)box(staticGroup,long?.07:wall.w+.04,2.15,long?wall.d+.04:.07,wall.x+(long?i:wall.w/2),1.2,wall.z+(long?wall.d/2:i),trimMaterial);
+      // Chair rails and wood wainscot share existing wall footprints.
+      box(staticGroup,wall.w+.025,.055,wall.d+.025,wall.x+wall.w/2,.95,wall.z+wall.d/2,emissiveMaterial);
+      box(staticGroup,wall.w+.03,.7,wall.d+.03,wall.x+wall.w/2,.48,wall.z+wall.d/2,trimMaterial);
     }
   }
   if(!nav){
@@ -351,13 +355,21 @@ function buildWorld(nav) {
     box(staticGroup,2.05,1.1,.02,7,1.65,22.94,new THREE.MeshBasicMaterial({map:art}));
   }
   for(const [index,b] of (world.platforms||[]).entries()){
-    box(staticGroup,b.w,b.h,b.d,b.x+b.w/2,b.h/2,b.z+b.d/2,material(0x345765,{metalness:.65}));
+    box(staticGroup,b.w,b.h,b.d,b.x+b.w/2,b.h/2,b.z+b.d/2,material(0x5d4544,{metalness:.08,roughness:.95}));
     box(staticGroup,b.w+.03,.035,b.d+.03,b.x+b.w/2,b.h+.02,b.z+b.d/2,new THREE.MeshBasicMaterial({color:index===3?amber:cyan}));
     const label=textSprite(index===3?'PREMIUM $450':`JUMP ${index+1}`,'#fac875',nav?2:1.2,!nav);label.position.set(b.x+b.w/2,b.h+.75,b.z+b.d/2);staticGroup.add(label);
   }
   const home=world.home;
-  box(staticGroup,3.2,.08,3.2,home.x,.03,home.z,material(0x284b3a,{emissive:0x4aa86c,emissiveIntensity:.35}));ring(staticGroup,home.r,mint,home.x,home.z,.065);
-  const homeLabel=textSprite('HALLWAY / EXTRACTION','#b9f8bd',nav?3.8:2.4,!nav);homeLabel.position.set(home.x,nav?.8:1.9,home.z);staticGroup.add(homeLabel);
+  const brass=material(0xc4a56e,{metalness:.7}),leather=material(0x253f35,{roughness:.9}),rubber=material(0x171a1c),padGlow=new THREE.MeshBasicMaterial({color:0x8bd5a3});
+  box(staticGroup,2.4,.035,2.4,home.x,.012,home.z,leather);
+  for(const side of [-1,1]){box(staticGroup,2.4,.025,.045,home.x,.035,home.z+side*1.18,padGlow);box(staticGroup,.045,.025,2.4,home.x+side*1.18,.035,home.z,padGlow);}
+  // Luggage trolley at the back of the marked recovery area.
+  const tz=home.z+1.35;
+  box(staticGroup,1.5,.12,.75,home.x,.28,tz,brass);
+  for(const x of [-.65,.65]){cylinder(staticGroup,.045,.045,1.9,home.x+x,1.27,tz,brass);sphere(staticGroup,.085,home.x+x,.13,tz+.28,rubber);sphere(staticGroup,.085,home.x+x,.13,tz-.28,rubber);}
+  box(staticGroup,1.4,.06,.06,home.x,2.18,tz,brass);
+  box(staticGroup,.54,.45,.35,home.x-.32,.56,tz,material(0x6d4b43));box(staticGroup,.45,.32,.32,home.x+.3,.49,tz,leather);
+  const homeLabel=textSprite('RECOVERY TROLLEY / SAFE','#b9f8bd',nav?3.8:2.3,!nav);homeLabel.position.set(home.x,nav?.8:2.65,home.z);staticGroup.add(homeLabel);
   const homeLight=new THREE.PointLight(mint,8,6,1.5);homeLight.position.set(home.x,2,home.z);staticGroup.add(homeLight);
   for(const h of world.hazards){
     const puddle=new THREE.Mesh(new THREE.CircleGeometry(h.r,32),material(0xb1482e,{emissive:0xe7552b,emissiveIntensity:.65}));puddle.rotation.x=-Math.PI/2;puddle.position.set(h.x,.015,h.z);staticGroup.add(puddle);ring(staticGroup,h.r,0xff9860,h.x,h.z);
@@ -369,13 +381,16 @@ function buildWorld(nav) {
     for(const [text,x,z] of [['A / FOYER',4,10],['B / LOUNGE',13,12],['C / PRIVATE SUITE',23,10]]){const label=textSprite(text,'#7da4b1',3,true);label.position.set(x,.2,z);staticGroup.add(label);}
     const north=textSprite('↑ NORTH','#64ddd4',3,false);north.position.set(14,.2,-.7);staticGroup.add(north);
   }else{
-    // Lamps, suspended pipes and floor markings create the industrial bodycam view.
-    for(const [x,z] of [[4,9],[12,4],[13,14],[24,11],[24,21],[5,20]]){
-      box(staticGroup,1.4,.06,.3,x,2.9,z,new THREE.MeshBasicMaterial({color:0xc1ddc5}));
-      // Ceiling fixtures glow; ambient light and the flashlight illuminate the room.
+    // Hotel sconces and framed art stay flush to real walls; routes stay clear.
+    const hotelBrass=material(0xc6a76c,{metalness:.6}),shade=new THREE.MeshBasicMaterial({color:0xe5cf9b});
+    const artCanvas=document.createElement('canvas');artCanvas.width=256;artCanvas.height=128;const ac=artCanvas.getContext('2d');ac.fillStyle='#302934';ac.fillRect(0,0,256,128);ac.strokeStyle='#c5aa72';ac.lineWidth=5;for(let i=0;i<4;i++){ac.beginPath();ac.arc(82,75,18+i*15,0,Math.PI*1.8);ac.stroke();}ac.fillStyle='#c9bdab';ac.fillRect(165,20,28,85);ac.strokeStyle='#796978';ac.lineWidth=2;ac.strokeRect(12,12,232,104);
+    const artTexture=new THREE.CanvasTexture(artCanvas);artTexture.colorSpace=THREE.SRGBColorSpace;const artMat=new THREE.MeshBasicMaterial({map:artTexture});
+    for(const w of world.walls){
+      if(Math.max(w.w,w.d)<3)continue;
+      const alongX=w.w>w.d,x=w.x+w.w/2,z=w.z+w.d/2;
+      if(alongX){box(staticGroup,1.1,.8,.06,x,1.65,w.z+w.d+.04,hotelBrass);box(staticGroup,.97,.67,.025,x,1.65,w.z+w.d+.08,artMat);box(staticGroup,.12,.3,.1,x+1,1.95,w.z+w.d+.08,shade);}
+      else{box(staticGroup,.06,.8,1.1,w.x+w.w+.04,1.65,z,hotelBrass);box(staticGroup,.025,.67,.97,w.x+w.w+.08,1.65,z,artMat);box(staticGroup,.1,.3,.12,w.x+w.w+.08,1.95,z+1,shade);}
     }
-    for(const z of [2,10,22]){const pipe=cylinder(staticGroup,.08,.08,26,14,2.9,z,material(0x5a655f));pipe.rotation.z=Math.PI/2;}
-    for(let z=18;z<23;z+=.7)box(staticGroup,.65,.006,.17,2,.015,z,new THREE.MeshBasicMaterial({color:0x8ba579}));
     const signs=[['FOYER →',5,2.2,16.98],['LOUNGE',12,2,9.98],['PRIVATE SUITE',24,2,16.98]];
     for(const [text,x,y,z]of signs){const sign=textSprite(text,'#dce7cc',1.7);sign.position.set(x,y,z);staticGroup.add(sign);}
   }
@@ -429,8 +444,10 @@ function buildCommandTrailer(){
 function makeCargo(item) {
   const group=new THREE.Group(), gold=material(amber,{metalness:.7,roughness:.25}), black=material(0x182831), glow=material(cyan,{emissive:cyan,emissiveIntensity:1.1}), glass=material(0x72c7b8,{metalness:.4,roughness:.15});
   if(item.kind==='core'){
-    cylinder(group,.28,.28,.42,0,.3,0,black);cylinder(group,.2,.2,.36,0,.32,0,glow);cylinder(group,.32,.32,.1,0,.1,0,gold);cylinder(group,.32,.32,.1,0,.56,0,gold);
-    for(let i=0;i<4;i++){const angle=i*Math.PI/2;box(group,.07,.5,.07,Math.cos(angle)*.24,.32,Math.sin(angle)*.24,gold);}
+    box(group,.62,.46,.32,0,.3,0,black);
+    for(const x of [-.18,.18])box(group,.025,.47,.34,x,.3,0,gold);
+    box(group,.3,.055,.05,0,.61,0,gold);for(const x of [-.12,.12])box(group,.04,.1,.05,x,.55,0,gold);
+    box(group,.1,.06,.025,0,.36,-.175,gold);
   }else if(item.kind==='vase'){
     cylinder(group,.12,.22,.45,0,.35,0,glass);sphere(group,.27,0,.23,0,glass);cylinder(group,.18,.12,.12,0,.64,0,gold);cylinder(group,.25,.25,.07,0,.03,0,gold);
   }else if(item.kind==='tv'){
@@ -503,8 +520,8 @@ function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();d
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
   if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
-  if(mapping[key]||['ArrowLeft','ArrowRight','e'].includes(key)){
-    e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');input();
+  if(mapping[key]||['ArrowLeft','ArrowRight','e','q'].includes(key)){
+    e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');if(key==='q'&&!e.repeat)socket.emit('cargo:drop');input();
   }
 });
 window.addEventListener('keyup',e=>{keys.delete(e.key.length===1?e.key.toLowerCase():e.key);input();});
@@ -512,6 +529,7 @@ window.addEventListener('blur',release);document.addEventListener('visibilitycha
 document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer?.domElement&&state?.phase==='playing'){yaw+=e.movementX*.0025;pitch=THREE.MathUtils.clamp(pitch+e.movementY*.002,-.8,.8);}});
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)release();$('clickToLook').hidden=state?.role==='Navigator'||touchDevice||!!document.pointerLockElement||state?.phase!=='playing';});
 $('lockMouse').onclick=()=>{try{const result=renderer?.domElement.requestPointerLock();result?.catch(()=>showError('Mouse capture unavailable. Use ← → to look, or swipe on mobile.'));}catch{showError('Use ← → to turn your view.');}};
+$('touchDrop').onclick=()=>{if(!state?.respawn)socket.emit('cargo:drop');};
 $('touchGrab').onclick=()=>{if(!state?.respawn)socket.emit('interact');};
 document.querySelectorAll('[data-move]').forEach(b=>{
   b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);touches.set(e.pointerId,b.dataset.move);if(b.dataset.move==='jump')jumpUntil=performance.now()+150;input();});

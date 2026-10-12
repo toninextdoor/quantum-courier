@@ -1,6 +1,6 @@
 {
   "name": "room-905",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "private": true,
   "description": "Room 905: an authorized cooperative hotel recovery mission for 2\u20134 players",
   "main": "server.js",

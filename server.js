@@ -144,7 +144,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   app.get('/vendor/three.module.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules/three/build/three.module.js')));
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.7.0' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.8.0' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : 'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role }) => ({ id, name, role })) });
@@ -155,12 +155,19 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     const before = item.condition; item.condition = Math.max(10, item.condition - amount);
     g.damage += Math.round(item.value * (before - item.condition) / 100);
   }
+  function dropCargo(g,a,reason='dropped'){
+    if(a.carrying===null)return;
+    const item=g.items[a.carrying];item.carrier=null;item.x=a.x;item.z=a.z;
+    item.y=Math.max(0,...g.map.platforms.filter(b=>a.x>=b.x&&a.x<=b.x+b.w&&a.z>=b.z&&a.z<=b.z+b.d&&b.h<=a.y+.03).map(b=>b.h));
+    a.carrying=null;a.gripUntil=null;cargoDamage(g,item,8);
+    event(g,`${a.name} ${reason} ${item.name}. −8% condition.`, 'damage');
+  }
   function resetActor(room, a, now, cause) {
     const g = room.game;
     if (now < a.safeUntil || dist(a, HOME) < HOME.r) return;
     if (a.carrying !== null) {
       const item = g.items[a.carrying]; item.carrier = null; item.x = a.x; item.z = a.z; item.y = Math.max(0,...g.map.platforms.filter(b=>a.x>=b.x&&a.x<=b.x+b.w&&a.z>=b.z&&a.z<=b.z+b.d&&b.h<=a.y+.03).map(b=>b.h));
-      cargoDamage(g, item, cause === 'sentinel' ? 35 : 20); a.carrying = null;
+      cargoDamage(g, item, cause === 'sentinel' ? 35 : 20); a.carrying = null; a.gripUntil=null;
     }
     a.x = HOME.x; a.z = HOME.z; a.y = 0; a.vy = 0; a.grounded = true; a.speed = 0; a.safeUntil = now + 3000; a.respawnUntil = now + 1200; a.resetCause = cause;
     g.deadline -= cause === 'sentinel' ? 10000 : 5000;
@@ -179,6 +186,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       const p = room.players.find(p => p.id === a.id), input = now >= (a.respawnUntil || 0) && now - p.inputAt < 350 ? p.input : {};
       let forward = (input.forward || 0), strafe = (input.strafe || 0), n = Math.max(1, Math.hypot(forward, strafe));
       forward /= n; strafe /= n;
+      if(a.carrying!==null){if(!Number.isFinite(a.gripUntil))a.gripUntil=now+2000;if(now>=a.gripUntil)dropCargo(g,a,'lost grip on');}
       const carrying = a.carrying !== null;
       const speed = carrying ? (input.sprint ? 2.8 : 2.05) : (input.sprint ? 4.6 : 3.15);
       a.yaw = Number.isFinite(input.yaw) ? input.yaw : a.yaw;
@@ -208,7 +216,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         const item = g.items[a.carrying]; item.x = a.x; item.z = a.z; item.y = a.y;
         if (dist(a, HOME) < HOME.r && a.y < .2) {
           const value = Math.round(item.value * item.condition / 100);
-          item.delivered = true; item.carrier = null; a.carrying = null; g.score += value; g.deliveries++;
+          item.delivered = true; item.carrier = null; a.carrying = null; a.gripUntil=null; g.score += value; g.deliveries++;
           event(g, `${a.name} extracted ${item.name}: +$${value}.`, 'success');
           if (g.score >= QUOTA) { finish(room, 'won'); return; }
         }
@@ -246,7 +254,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         roundId: g.started, mapSeed:g.map.seed, phase: room.phase, role: p.role, remaining: room.phase === 'finished' ? g.finalRemaining : Math.max(0, (g.deadline - now) / 1000),
         respawn: room.phase==='playing'&&me&&now<(me.respawnUntil||0)?{cause:me.resetCause,penalty:me.resetCause==='sentinel'?10:5,remaining:(me.respawnUntil-now)/1000}:null,
         quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
-        actors: g.actors.map(a => ({ id: a.id, name: a.name, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil })),
+        actors: g.actors.map(a => ({ id: a.id, name: a.name, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
         // Only a coarse warning intensity reaches bodycams, never enemy coordinates.
         threat: !navigator && me && room.phase==='playing' ? Math.round(clamp((9-dist(me,g.enemy))/8,0,1)*10)/10 : 0,
@@ -267,7 +275,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'2.7.0'});
+    socket.emit('build', {version:'2.8.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -300,10 +308,12 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       else if(data?.action==='win'){g.score=QUOTA;finish(room,'won');}
       else {
         if(!targets.length)return reply({error:'Select a Scavenger.'});
-        if(!['near','far','home','parkour','premium','protect','breach','catch','damage'].includes(data?.action))return reply({error:'Unknown developer action.'});
+        if(!['near','far','home','parkour','premium','protect','breach','catch','damage','grip','expire-grip'].includes(data?.action))return reply({error:'Unknown developer action.'});
         if(['near','far'].includes(data.action)&&targets.length!==1)return reply({error:'Select one Scavenger for Sentinel placement.'});
+        if(['grip','expire-grip'].includes(data.action)&&!targets.some(a=>a.carrying!==null))return reply({error:'No selected crew member is holding property.'});
         for(const a of targets){
-          if(data.action==='near'||data.action==='far'){
+          if(['grip','expire-grip'].includes(data.action)){if(a.carrying!==null)a.gripUntil=data.action==='grip'?now+2000:now-1;}
+          else if(data.action==='near'||data.action==='far'){
             const candidates=floorCells(g.map.walls).filter(p=>!g.map.platforms.some(b=>platformOverlap({...p,y:0},b)));
             candidates.sort((p,q)=>data.action==='near'?Math.abs(dist(a,p)-2)-Math.abs(dist(a,q)-2):dist(a,q)-dist(a,p));
             const p=candidates[0];if(p)Object.assign(g.enemy,{x:p.x,z:p.z,path:[],recalc:now+5000});g.devFreeze=true;
@@ -314,7 +324,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
           }else if(data.action==='protect'){a.safeUntil=now+60000;}
           else if(data.action==='premium'){
             const item=g.items.find(i=>i.premium&&!i.delivered&&!i.carrier);
-            if(item&&a.carrying===null){item.carrier=a.id;a.carrying=item.id;}
+            if(item&&a.carrying===null){item.carrier=a.id;a.carrying=item.id;a.gripUntil=now+2000;}
           }else{
             let p=HOME;
             if(data.action==='parkour'){
@@ -378,12 +388,14 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       lastInteract = now;
       const g = room.game, a = g.actors.find(a => a.id === socket.id);
       if (!a || now < (a.respawnUntil || 0)) return;
-      if (a.carrying !== null) {
-        const item = g.items[a.carrying]; item.carrier = null; item.x = a.x; item.z = a.z; item.y = Math.max(0,...g.map.platforms.filter(b=>a.x>=b.x&&a.x<=b.x+b.w&&a.z>=b.z&&a.z<=b.z+b.d&&b.h<=a.y+.03).map(b=>b.h)); a.carrying = null;
-        cargoDamage(g, item, 8); event(g, `${a.name} dropped ${item.name}. Handle gently.`, 'damage'); return;
-      }
+      if(a.carrying!==null){a.gripUntil=now+2000;return;}
       const item = g.items.filter(i => !i.delivered && !i.carrier && dist(a, i) < 1.8 && Math.abs(a.y-(i.y||0))<.7 && clearLine(a, i, g.map.walls)).sort((i, j) => dist(a, i) - dist(a, j))[0];
-      if (item) { item.carrier = a.id; a.carrying = item.id; event(g, `${a.name} secured ${item.name}. Return to extraction.`, 'pickup'); }
+      if (item) { item.carrier = a.id; a.carrying = item.id; a.gripUntil=now+2000; event(g, `${a.name} secured ${item.name}. Return to extraction.`, 'pickup'); }
+    });
+    socket.on('cargo:drop',()=>{
+      const room=rooms.get(socket.data.code),now=performance.now();if(!room||room.phase!=='playing'||now-lastInteract<350)return;
+      const a=room.game.actors.find(a=>a.id===socket.id);if(!a||now<(a.respawnUntil||0))return;
+      lastInteract=now;dropCargo(room.game,a);
     });
     socket.on('guide', data => {
       const room = rooms.get(socket.data.code), now = performance.now();
