@@ -136,3 +136,30 @@ test('proximity warnings increase nearby without exposing enemy coordinates',asy
     a.safeUntil=Infinity;Object.assign(g.enemy,{x:22,z:6});await delay(80);assert.ok((await next(runner,'state')).threat>=.8,'protection does not hide a nearby monster');
   }finally{clients.forEach(c=>c.disconnect());await game.close();}
 });
+
+test('developer authorization, room scope, effect broadcasts, logout and disabled access',async()=>{
+ const game=createGameServer({devUsername:'tester',devPassword:'test-only-password-12345',mapFactory:()=>generateMap(42)});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const cs=[];
+ try{
+  for(let i=0;i<4;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}
+  const [nav,a,b,outsider]=cs,lobby=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Nav'});const code=(await lobby).code;
+  await request(a,'enter',{code,name:'A'});await request(b,'enter',{code,name:'B'});await request(outsider,'enter',{create:true,name:'Other'});await request(nav,'start',{});
+  assert.match((await request(b,'dev:action',{action:'time'})).error,/session/);
+  assert.match((await request(b,'dev:login',{username:'tester',password:'wrong'})).error,/credentials/);
+  assert.equal((await request(b,'dev:login',{username:'tester',password:'test-only-password-12345'})).ok,true);
+  let leaked=0;outsider.on('dev:effect',()=>leaked++);
+  const effects=[next(a,'dev:effect'),next(b,'dev:effect')];await request(b,'dev:action',{action:'combined',target:'all'});
+  assert.deepEqual((await Promise.all(effects)).map(e=>e.kind),['combined','combined']);assert.equal(leaked,0);
+  await delay(210);assert.match((await request(b,'dev:action',{action:'home',target:outsider.id})).error,/Select/);
+  await delay(210);await request(b,'dev:action',{action:'freeze'});const room=game.rooms.get(code);assert.equal(room.game.devFreeze,true);
+  await delay(210);await request(b,'dev:action',{action:'parkour',target:a.id});assert.ok(room.game.actors[0].x>19);
+  await delay(210);await request(b,'dev:action',{action:'premium',target:a.id});assert.equal(room.game.actors[0].carrying,8);
+  await delay(210);await request(b,'dev:action',{action:'home',target:a.id});await delay(80);assert.equal(room.game.score,450);
+  await delay(210);await request(b,'dev:action',{action:'finish'});assert.equal(room.phase,'finished');await request(b,'start',{});assert.equal(room.phase,'playing');
+  await delay(210);const deadline=room.game.deadline;await request(b,'dev:action',{action:'breach',target:a.id});assert.equal(room.game.deadline,deadline-5000);assert.equal(room.game.actors[0].x,HOME.x);
+  await delay(210);const deadline2=room.game.deadline;await request(b,'dev:action',{action:'catch',target:a.id});assert.equal(room.game.deadline,deadline2-10000);assert.equal(room.game.catches,1);
+  await delay(210);await request(b,'dev:action',{action:'parkour',target:a.id});await delay(210);await request(b,'dev:action',{action:'premium',target:a.id});await delay(210);await request(b,'dev:action',{action:'damage',target:a.id});assert.equal(room.game.items[8].condition,80);
+  await delay(210);await request(b,'dev:action',{action:'win'});assert.equal(room.game.outcome,'won');
+  b.emit('dev:logout');await delay(210);assert.match((await request(b,'dev:action',{action:'time'})).error,/session/);
+ }finally{cs.forEach(s=>s.disconnect());await game.close();}
+ const disabled=createGameServer({devUsername:'',devPassword:''});await new Promise(r=>disabled.server.listen(0,'127.0.0.1',r));const s=io(`http://127.0.0.1:${disabled.server.address().port}`);try{await next(s,'connect');assert.match((await request(s,'dev:login',{username:'tester',password:'test-only-password-12345'})).error,/disabled/);}finally{s.disconnect();await disabled.close();}
+});

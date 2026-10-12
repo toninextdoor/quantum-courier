@@ -2,7 +2,7 @@
 const express = require('express');
 const http = require('node:http');
 const path = require('node:path');
-const { randomInt } = require('node:crypto');
+const { randomInt, createHash, timingSafeEqual } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const { Server } = require('socket.io');
 const W = 28, H = 24, DT = 0.05, ROUND = 180000, QUOTA = 600, RADIUS = 0.28;
@@ -133,14 +133,18 @@ function freshGame(players, now, map = generateMap()) {
     ping: null, cue: null, eventId: 0, event: 'Shift started. Find valuables and return them to the green extraction pad.', outcome: null
   };
 }
-function createGameServer({ mapFactory = generateMap } = {}) {
+function createGameServer({ mapFactory = generateMap, devUsername = process.env.DEV_USERNAME, devPassword = process.env.DEV_PASSWORD } = {}) {
+  const loginAttempts=new Map();
+  const digest=value=>createHash('sha256').update(value).digest();
+  const devEnabled=typeof devUsername==='string'&&typeof devPassword==='string'&&devPassword.length>=12;
+  const isDev=socket=>socket.data.devUntil>performance.now();
   const app = express(), server = http.createServer(app);
   const io = new Server(server, { maxHttpBufferSize: 8192 });
   const rooms = new Map();
   app.get('/vendor/three.module.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules/three/build/three.module.js')));
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.3.1' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '2.4.0' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : 'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role }) => ({ id, name, role })) });
@@ -220,7 +224,7 @@ function createGameServer({ mapFactory = generateMap } = {}) {
     let waypoint = enemy.path[0];
     if (waypoint && dist(enemy, waypoint) < 0.15) { enemy.path.shift(); waypoint = enemy.path[0]; }
     if (!waypoint && target && clearLine(enemy, target, g.map.walls)) waypoint = target;
-    if (waypoint) {
+    if (waypoint && !g.devFreeze) {
       const distance = dist(enemy, waypoint), stride = Math.min(distance, (target ? 2.15 : 1.3) * DT);
       if (distance > 0.001) {
         const dx = (waypoint.x - enemy.x) / distance * stride, dz = (waypoint.z - enemy.z) / distance * stride;
@@ -262,7 +266,67 @@ function createGameServer({ mapFactory = generateMap } = {}) {
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'2.3.1'});
+    socket.emit('build', {version:'2.4.0'});
+    socket.on('dev:login',(data,ack)=>{
+      if(typeof ack!=='function')return;
+      const now=performance.now(),key=socket.handshake.address;
+      if(loginAttempts.size>2000)for(const [k,v]of loginAttempts)if(now-v.start>60000)loginAttempts.delete(k);
+      let attempt=loginAttempts.get(key);if(!attempt||now-attempt.start>60000){attempt={start:now,count:0};loginAttempts.set(key,attempt);}
+      if(++attempt.count>6)return ack({error:'Too many attempts. Wait one minute.'});
+      if(!devEnabled)return ack({error:'Developer login is disabled. Configure DEV_USERNAME and DEV_PASSWORD on the server.'});
+      if(typeof data?.username!=='string'||typeof data?.password!=='string'||data.username.length>100||data.password.length>200)return ack({error:'Invalid credentials.'});
+      const userOk=timingSafeEqual(digest(data.username),digest(devUsername));
+      const passOk=timingSafeEqual(digest(data.password),digest(devPassword));
+      if(!userOk||!passOk)return ack({error:'Invalid credentials.'});
+      socket.data.devUntil=now+30*60000;ack({ok:true});
+    });
+    socket.on('dev:logout',()=>{socket.data.devUntil=0;});
+    let lastDev=-Infinity;
+    socket.on('dev:action',(data,ack)=>{
+      const reply=typeof ack==='function'?ack:()=>{},now=performance.now();
+      if(!isDev(socket))return reply({error:'Developer session expired. Sign in again.'});
+      if(now-lastDev<200)return reply({error:'Wait a moment.'});lastDev=now;
+      const room=rooms.get(socket.data.code);
+      if(!room||room.phase!=='playing')return reply({error:'Launch a shift in your room first.'});
+      const g=room.game,targets=data?.target==='all'?g.actors:g.actors.filter(a=>a.id===data?.target);
+      if(['red','heartbeat','ambience','combined','clear'].includes(data?.action)){
+        if(!targets.length)return reply({error:'Select a Scavenger.'});
+        for(const a of targets)io.to(a.id).emit('dev:effect',{kind:data.action,seconds:5});
+      }else if(data?.action==='freeze'){g.devFreeze=!g.devFreeze;event(g,`DEV TEST: Sentinel ${g.devFreeze?'frozen':'resumed'}.`);}
+      else if(data?.action==='time'){g.deadline+=30000;event(g,'DEV TEST: +30 seconds.');}
+      else if(data?.action==='finish'){finish(room,'lost');}
+      else if(data?.action==='win'){g.score=QUOTA;finish(room,'won');}
+      else {
+        if(!targets.length)return reply({error:'Select a Scavenger.'});
+        if(!['near','far','home','parkour','premium','protect','breach','catch','damage'].includes(data?.action))return reply({error:'Unknown developer action.'});
+        if(['near','far'].includes(data.action)&&targets.length!==1)return reply({error:'Select one Scavenger for Sentinel placement.'});
+        for(const a of targets){
+          if(data.action==='near'||data.action==='far'){
+            const candidates=floorCells(g.map.walls).filter(p=>!g.map.platforms.some(b=>platformOverlap({...p,y:0},b)));
+            candidates.sort((p,q)=>data.action==='near'?Math.abs(dist(a,p)-2)-Math.abs(dist(a,q)-2):dist(a,q)-dist(a,p));
+            const p=candidates[0];if(p)Object.assign(g.enemy,{x:p.x,z:p.z,path:[],recalc:now+5000});g.devFreeze=true;
+          }else if(['breach','catch'].includes(data.action)){
+            if(dist(a,HOME)<HOME.r){const p=floorCells(g.map.walls).find(p=>dist(p,HOME)>4);if(p){a.x=p.x;a.z=p.z;}}
+            a.safeUntil=0;resetActor(room,a,now,data.action==='catch'?'sentinel':'breach');
+          }else if(data.action==='damage'){cargoDamage(g,g.items.find(i=>i.id===a.carrying),20);
+          }else if(data.action==='protect'){a.safeUntil=now+60000;}
+          else if(data.action==='premium'){
+            const item=g.items.find(i=>i.premium&&!i.delivered&&!i.carrier);
+            if(item&&a.carrying===null){item.carrier=a.id;a.carrying=item.id;}
+          }else{
+            let p=HOME;
+            if(data.action==='parkour'){
+              const b=g.map.platforms[0],next=g.map.platforms[1],axis=Math.abs(next.x-b.x)>.1?'x':'z',dir=Math.sign(next[axis]-b[axis]);
+              p={x:b.x+b.w/2,z:b.z+b.d/2};p[axis]-=dir*((axis==='x'?b.w:b.d)/2+.65);
+            }
+            Object.assign(a,{x:p.x,z:p.z,y:0,vy:0,grounded:true,jumpHeld:false,safeUntil:now+60000});
+            const player=room.players.find(p=>p.id===a.id);player.input={};player.inputAt=0;
+          }
+        }
+        event(g,`DEV TEST: ${data.action}.`);
+      }
+      reply({ok:true});snapshot(room,now);
+    });
     let lastEnter = -Infinity, lastChat = -Infinity, lastInteract = -Infinity, lastGuide = -Infinity;
     socket.on('enter', (data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, now = performance.now();
@@ -290,7 +354,7 @@ function createGameServer({ mapFactory = generateMap } = {}) {
     });
     socket.on('start', (_data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, room = rooms.get(socket.data.code);
-      if (!room || room.players[0]?.id !== socket.id) return reply({ error: 'The host launches the shift.' });
+      if (!room || room.players[0]?.id !== socket.id && !isDev(socket)) return reply({ error: 'The host launches the shift.' });
       if (room.players.length < 2) return reply({ error: 'Need a Navigator and at least one Scavenger.' });
       if (room.phase === 'playing') return reply({ error: 'Shift already running.' });
       roles(room); room.phase = 'playing'; room.notice = ''; room.game = freshGame(room.players, performance.now(), mapFactory());

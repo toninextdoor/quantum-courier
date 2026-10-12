@@ -1,24 +1,23 @@
-# Put Ghost Shift on your existing live URL
+# Deploy Quantum Courier v2.4.0
 
-This is the complete version 2.3.1 replacement. Keep your existing GitHub repository and Render Web Service. You do not need a new URL or another hosting service.
+Keep your existing GitHub repository and Render Web Service.
 
-1. Download the new quantum-courier.zip and unzip it. Open the extracted quantum-courier folder.
-2. Open your existing GitHub quantum-courier repository. Choose Add file → Upload files.
-3. From Finder, drag the CONTENTS of the extracted folder into GitHub's upload area: server.js, package.json, package-lock.json, README.md, UPDATE.md, public folder and test folder. Drag the folders onto the web page rather than selecting their individual files in the file picker. Keep the outer quantum-courier folder out of the upload.
-4. Before committing, confirm the paths include public/index.html, public/style.css, public/game.js, and test/game.test.js. The server.js and package files should have no folder prefix. GitHub will replace files with matching paths. Commit the changes with the message "Add Sentinel warnings and safer varied parkour".
-5. In Render, open the existing service and select Manual Deploy → Deploy latest commit. This works even if your public-repository connection does not auto-deploy. Keep Build Command = npm ci, Start Command = npm start, Root Directory blank, and one Free instance.
-6. Wait until the deployment is Live. Open your existing game URL and reload. You should see QUANTUM COURIER / GHOST SHIFT, the GRAPHICS NORMAL button, warehouse rules, and crew terminal. When you launch, Navigator sees a command trailer and the FOCUS HOLOGRAM button; Scavenger sees no breaches or Sentinel. If the old page appears, try a hard reload or a private window.
-7. Test with a friend on another device: host creates room (Navigator), friend joins (Scavenger), host launches. Navigator sends a waypoint and a command. Scavenger picks up a valuable and brings it to the green pad. Check that the score increases on both devices. Confirm only the Navigator sees breaches and the Sentinel; Scavenger should see cargo only when close enough to grab it.
-8. Submit the public game URL after that test. A GitHub repository link or localhost address is not the playable submission URL.
+1. Download quantum-courier.zip and unzip it. Open the extracted quantum-courier folder.
+2. In your existing GitHub repository, choose Add file → Upload files. Drag the CONTENTS of that folder into the page, including public and test. Do not upload the outer quantum-courier folder or node_modules.
+3. Confirm server.js, package.json and package-lock.json are at the repository root, and public/game.js, public/index.html and public/style.css retain their public/ prefix. Commit the replacements.
+4. Download the separate private DEV-SETUP.txt. In Render → your service → Environment, add DEV_USERNAME and DEV_PASSWORD using the values in that file. Do not upload DEV-SETUP.txt to GitHub. Without these variables developer access stays disabled.
+5. Save the environment changes and deploy the latest commit. Keep Build Command npm ci, Start Command npm start, and Root Directory blank.
+6. When Live, reopen the game. Its /health endpoint and ONLINE badge must show 2.4.0. All testers should close old tabs and reload the new version.
+7. Tap/click the SOUND button ten times, leaving less than three seconds between consecutive taps. The developer login opens. Use the credentials from DEV-SETUP.txt. Sessions last 30 minutes and end on disconnect; repeat the ten taps to reopen an authenticated console.
+8. Create/join a normal room with at least two players and launch a shift. Select one Scavenger or All Scavengers. Developer controls affect only your current room.
 
-Important: upload package.json AND package-lock.json together. The new dependency is Three.js; leaving the old package files in place will prevent the 3D module from loading. Do not upload node_modules or browser-check files. Dependencies are installed by Render.
+## Test controls
 
-If the deploy fails, copy the error from Render's logs into the chat. If it loads but something fails during play, describe which role/device you used, the action you took, and what happened.
+- Red-screen, heartbeat, ambience, or combined previews last five seconds. Clear removes the preview; real proximity warnings can still remain.
+- Near/far Sentinel placement requires ONE selected Scavenger and freezes the Sentinel. Freeze/resume toggles its movement. Other players' warnings still depend on their own positions.
+- Go to parkour start, return to extraction, give premium cargo, grant 60 seconds of protection, or damage held cargo by 20%.
+- Simulate breach/catch resets, add 30 seconds, complete the quota to test a win, or end the round to test a loss. New randomized round launches after a round ends.
+- Diagnostics show your audio status, warning intensity and render draw calls while the console is open. Close it before moving; controls release when it opens.
+- Browsers require each player to interact with their own device before audio works. Remote previews cannot override browser audio permissions. That player can click SOUND ON or ENABLE SOUND.
 
-After deployment: play two shifts and check that the sector seed and warehouse layout change. Test Space / touch JUMP. Navigator should see a $450 SKYLINE ARTIFACT on the highest cyan/gold platform. Normal cargo still lets you win without using parkour.
-
-Performance update: repeated walls and trim are batched, default rendering uses at most 1x pixel density, unnecessary point lights are removed, and unchanged cargo lists no longer rebuild 20 times per second. If your device still struggles, click GRAPHICS NORMAL to switch to GRAPHICS LOW. Rules, randomized maps, parkour and server synchronization are unchanged.
-
-Version 2.3: BODYCAM red edges grow stronger as the Sentinel approaches. Click SOUND OFF to enable the heartbeat; it becomes faster and louder nearby. This gives no direction or exact monster position. Warnings now remain active near extraction and during respawn protection. Parkour now varies between horizontal and vertical courses, reverses direction, moves within its reserved area, and changes step size/height. Steps touch to prevent narrow gap traps, with server recovery for embedded players.
-
-Deploy verification for v2.3.1: upload server.js as well as all public files and both package files. After Render finishes, open your game URL followed by /health; it must report version 2.3.1. In the game, ONLINE / v2.3.1 confirms the server version. Scavengers can click TEST AUDIO / RED to preview effects. Sound starts ON and unlocks on the first player click. Assets use versioned URLs to avoid stale browser copies.
+Regular sign-in is a future-account placeholder; guest play remains available without registration. The previous public effect-test button is replaced by the protected developer console. No developer password is included in the public files or ZIP.

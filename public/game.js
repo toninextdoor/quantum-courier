@@ -38,17 +38,10 @@ async function unlockAudio() {
 }
 function updateAmbience() {
   if(!ambience)return;
-  const active=soundOn&&!document.hidden&&state?.phase==='playing';
+  const active=soundOn&&!document.hidden&&(state?.phase==='playing'||(devEffect?.until>performance.now()&&['ambience','combined'].includes(devEffect.kind)));
   ambience.gain.setTargetAtTime(active?.018+threatLevel*.025:0,audio.currentTime,.3);
 }
 for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(soundOn&&audio?.state!=='running')void unlockAudio();},{capture:true});
-$('testEffects').onclick=async()=>{
-  soundOn=true;await unlockAudio();$('sound').textContent='SOUND ON';$('sound').setAttribute('aria-pressed','true');
-  audioTestUntil=performance.now()+2200;
-  $('testEffects').textContent=audio?.state==='running'?'TESTING…':'CLICK TO ENABLE AUDIO';
-  tone(180,.25,'triangle',.13,100);
-  setTimeout(()=>{ $('testEffects').textContent='TEST AUDIO / RED'; },2300);
-};
 function tone(frequency, duration = 0.12, type = 'sine', volume = 0.06, end = frequency) {
   if (!soundOn || !audio || audio.state !== 'running') return;
   const oscillator = audio.createOscillator(), gain = audio.createGain(), now = audio.currentTime;
@@ -60,6 +53,36 @@ $('sound').onclick = async () => {
   soundOn=!soundOn;if(soundOn)await unlockAudio();updateAmbience();
   $('sound').textContent=soundOn?'SOUND ON':'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));tone(480);
 };
+let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
+$('regularSignIn').onclick=()=>$('regularDialog').showModal();
+$('continueGuest').onclick=()=>$('regularDialog').close();
+$('sound').addEventListener('click',()=>{
+  const now=performance.now();soundTapCount=now-soundTapAt>3000?1:soundTapCount+1;soundTapAt=now;
+  if(soundTapCount>=10){soundTapCount=0;release();document.exitPointerLock?.();$('devDialog').showModal();refreshDevTargets();}
+});
+$('closeDev').onclick=()=>$('devDialog').close();
+function refreshDevTargets(){
+  const selected=$('devTarget').value;
+  $('devTarget').replaceChildren(...[{id:'all',name:'All Scavengers'},...(state?.actors||[])].map(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.name;return o;}));
+  if([...$('devTarget').options].some(o=>o.value===selected))$('devTarget').value=selected;
+}
+function devRequest(event,data){
+  $('devStatus').textContent='Working…';
+  socket.timeout(5000).emit(event,data,(err,result)=>{
+    $('devStatus').textContent=err?'Connection timed out.':result?.error||'Done.';
+    if(event==='dev:login'&&result?.ok){devSignedIn=true;$('devLogin').hidden=true;$('devPanel').hidden=false;$('devPass').value='';refreshDevTargets();}
+    if(result?.error?.includes('session')){devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;}
+  });
+}
+$('devLogin').onsubmit=e=>{e.preventDefault();devRequest('dev:login',{username:$('devUser').value,password:$('devPass').value});};
+$('devLogout').onclick=()=>{socket.emit('dev:logout');devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devStatus').textContent='Signed out.';};
+$('devReplay').onclick=()=>devRequest('start',{});
+document.querySelectorAll('[data-dev]').forEach(b=>b.onclick=()=>devRequest('dev:action',{action:b.dataset.dev,target:$('devTarget').value}));
+socket.on('dev:effect',async data=>{
+  if(data.kind==='clear'){devEffect=null;audioTestUntil=0;return;}
+  devEffect={kind:data.kind,until:performance.now()+5000};
+  if(['heartbeat','ambience','combined'].includes(data.kind)){soundOn=true;await unlockAudio();$('sound').textContent=audio?.state==='running'?'SOUND ON':'ENABLE SOUND';$('sound').setAttribute('aria-pressed','true');}
+});
 $('create').onclick = () => send('enter', { create: true, name: $('name').value });
 $('join').onclick = () => send('enter', { name: $('name').value, code: $('code').value });
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').click(); });
@@ -75,13 +98,13 @@ function reset() {
   $('front').hidden = false; $('entry').hidden = false; $('lobby').hidden = true; $('game').hidden = true; $('result').hidden = true;
   $('footer').hidden = false; document.body.classList.remove('inGame'); $('chatLog').replaceChildren();
   updateAmbience();
-  if ($('helpDialog').open) $('helpDialog').close();
+  if (($('helpDialog').open||$('devDialog').open||$('regularDialog').open)) $('helpDialog').close();
 }
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE / 20 Hz'; });
-socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.3.1')showError('The server is an older version. Deploy the latest commit, then reload.'); });
-socket.on('disconnect', () => { reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
+socket.on('build',data=>{ $('connection').textContent=`● ONLINE / v${data.version}`; if(data.version!=='2.4.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
   lobby = data; $('entry').hidden = true; $('lobby').hidden = data.phase !== 'lobby';
@@ -399,7 +422,7 @@ function input() {
 function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
-  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||$('helpDialog').open||state?.phase!=='playing'||state.role==='Navigator')return;
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open)||state?.phase!=='playing'||state.role==='Navigator')return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e'].includes(key)){
     e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');input();
   }
@@ -426,16 +449,18 @@ function frame(now) {
   if(now-lastRender < 1000/60-1 || (state.phase==='finished' && now-lastRender<250))return;
   lastRender=now; lastFrame=now;
   const nav=state.role==='Navigator';
-  const threatTarget=now<audioTestUntil ? 1 : !nav&&state.phase==='playing' ? (state.threat||0) : 0;
+  const devActive=devEffect?.until>now;
+  const threatTarget=devActive&&['red','combined'].includes(devEffect.kind) ? 1 : !nav&&state.phase==='playing' ? (state.threat||0) : 0;
   updateAmbience();
   threatLevel += (threatTarget-threatLevel)*Math.min(1,dt*5);
   $('threatVignette').style.opacity=String(threatLevel*.8);
-  if(threatLevel>.03 && now-lastHeartbeat>1400-threatLevel*1050){
-    tone(100,.17,'triangle',.025+threatLevel*.08,65);
-    setTimeout(()=>tone(85,.13,'triangle',.02+threatLevel*.06,55),160);
+  const heartbeatLevel=devActive&&['heartbeat','combined'].includes(devEffect.kind)?1:devActive&&devEffect.kind==='red'?0:threatLevel;
+  if(heartbeatLevel>.03 && now-lastHeartbeat>1400-heartbeatLevel*1050){
+    tone(100,.17,'triangle',.025+heartbeatLevel*.08,65);
+    setTimeout(()=>tone(85,.13,'triangle',.02+heartbeatLevel*.06,55),160);
     lastHeartbeat=now;
   }
-  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!$('helpDialog').open){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
+  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const me=state.actors.find(a=>a.id===socket.id);
   for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,pos.y||0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
@@ -457,6 +482,7 @@ function frame(now) {
       lastSound=now;
     }
   }else{$('compass').textContent='↑ N / SPECTRAL';$('waypoint').hidden=true;$('dangerOverlay').hidden=true;}
+  if($('devDialog').open&&devSignedIn)$('devDiagnostics').textContent=`Room ${lobby?.code||'—'} · ${state.role} · Server threat ${state.threat||0} · Audio ${audio?.state||'not started'} · Draw calls ${renderer.info.render.calls}`;
   renderer.render(scene,nav?commandCamera:camera);
 }
 requestAnimationFrame(frame);
