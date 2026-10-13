@@ -108,3 +108,6 @@ Rebuilt dependency lock, Node 24.x, independent GTA-inspired hotel identity. On 
 
 ## v3.1.2 layout
 Options beside ONLINE consolidates navigation and preferences. The footer sits at the bottom of short pages and follows content on longer pages. Hotel art has no placeholder caption.
+
+## v3.2 Guardian
+The second player becomes Guardian in crews of three or four. F / SIGNAL PULSE pauses the Sentinel for 3 seconds within 6m and line of sight; recharge takes 12 seconds. Signal gaps remain Navigator-only. Two-player mode stays Navigator + Recovery.

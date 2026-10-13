@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.1.2';
+import { trolleyLayout } from '/trolley-layout.js?v=3.2.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.1.2';
+import { checkBrowser } from '/self-check.js?v=3.2.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -45,7 +45,7 @@ async function dismissIntro(){ $('introScreen').hidden=true;document.querySelect
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
- {kicker:'02 / YOUR CREW',title:'One sees the map.<br>The others go inside.',text:'The first player is the Navigator. Everyone else is recovery crew. You need each other’s perspective.',facts:['Navigator: the hologram shows hidden signal gaps, the Sentinel beacon and distant valuables. Click the floor to guide your crew.','Recovery crew: explore in first person. Nearby valuables appear within reach; hidden signals stay off your bodycam.','Use crew chat, quick commands, or talk together. WASD + mouse on desktop; touch arrows + swipe on mobile.'],chapter:'TWO PERSPECTIVES',art:'views'},
+ {kicker:'02 / YOUR CREW',title:'One sees the map.<br>The others go inside.',text:'The first player is Navigator. With three or four players, the second is Guardian and the rest are Recovery crew. Two-player crews use Navigator + Recovery.',facts:['Navigator: the hologram shows hidden signal gaps, the Sentinel beacon and distant valuables. Click the floor to guide your crew.','Recovery crew: explore in first person. Nearby valuables appear within reach; hidden signals stay off your bodycam.','Guardian: sees the Sentinel, not signal gaps. Press F / SIGNAL PULSE within 6m and a clear path to pause it for 3 seconds; recharge takes 12 seconds. You can also recover cargo.','Use crew chat, quick commands, or talk together. WASD + mouse on desktop; touch arrows + swipe on mobile.'],chapter:'TWO PERSPECTIVES',art:'views'},
  {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Tap E / GRIP at least every 2 seconds to keep hold. Q / DROP releases it. Letting go costs 8% condition.','Walk with property: sprinting into walls costs 12% condition. Less condition means less value.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
  {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a signal beacon. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator can track the beacon and signal gaps. Follow their directions.','Signal gaps cost 5 seconds; Sentinel interference costs 10. Property is dropped and sensors reset at the hallway.','After a brief sensor reset, you reconnect at the hallway. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
 ];
@@ -176,7 +176,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.1.2 · SERVER ${data.version}`; if(data.version!=='3.1.2')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.2.0 · SERVER ${data.version}`; if(data.version!=='3.2.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -186,9 +186,9 @@ socket.on('lobby', data => {
   $('players').replaceChildren(...data.players.map(p => {
     const li = document.createElement('li'), name = document.createElement('strong'), role = document.createElement('span');
     name.textContent = p.name + (p.id === socket.id ? ' · YOU' : '') + (p.id === data.host ? ' · HOST' : '');
-    role.textContent = p.role==='Navigator'?'NAVIGATOR':'RECOVERY CREW'; const badge=document.createElement('img');badge.className='rosterAvatar';badge.src=`/assets/avatars/${avatarColors[p.avatar]?p.avatar:'amber'}.svg`;badge.alt=`${p.avatar||'amber'} recovery badge`;li.append(badge,name, role); return li;
+    role.textContent = p.role==='Navigator'?'NAVIGATOR':p.role==='Guardian'?'GUARDIAN':'RECOVERY CREW'; const badge=document.createElement('img');badge.className='rosterAvatar';badge.src=`/assets/avatars/${avatarColors[p.avatar]?p.avatar:'amber'}.svg`;badge.alt=`${p.avatar||'amber'} recovery badge`;li.append(badge,name, role); return li;
   }));
-  $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. Everyone else enters the hotel suite.');
+  $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. With 3–4 players, the second is Guardian; the rest are Recovery crew.');
   $('start').disabled = data.host !== socket.id || data.players.length < 2;
   $('start').textContent = data.host === socket.id ? 'Enter Room 905 →' : 'Waiting for host to launch…';
   if (data.phase === 'lobby') {
@@ -222,7 +222,9 @@ socket.on('state', data => {
   }
   $('front').hidden = true; $('game').hidden = false; $('footer').hidden = false; document.body.classList.add('inGame');
   $('sector').textContent = `ROOM 905 / LAYOUT ${data.mapSeed?.toString(16).toUpperCase() || '—'}`;
-  $('role').textContent = nav ? 'NAVIGATOR' : 'RECOVERY CREW'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : 'BODYCAM / SENSOR BLIND · TRUST COMMAND';
+  $('role').textContent = nav ? 'NAVIGATOR' : data.role==='Guardian'?'GUARDIAN':'RECOVERY CREW'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : data.role==='Guardian'?'GUARDIAN / SENTINEL LINK':'BODYCAM / SENSOR BLIND · TRUST COMMAND';
+  if(data.role!==previous?.role)$('scavengerInfo').querySelector('p').textContent=data.role==='Guardian'?'Your bodycam can see the Sentinel, but signal gaps stay hidden. Follow the Navigator. F / SIGNAL PULSE pauses the Sentinel for 3 seconds within 6m and a clear path; recharge takes 12 seconds. You can also grab property and keep tapping E / GRIP while carrying.':'Your bodycam cannot locate signal gaps or the Sentinel. Red edges and heartbeat warn when it is close. Follow your Navigator. While carrying, tap E / GRIP every 2 seconds.';
+  $('guardianPulse').hidden=data.role!=='Guardian';$('guardianPulse').disabled=data.phase!=='playing'||!!data.respawn||(data.guardian?.cooldown||0)>0;$('guardianPulse').textContent=(data.guardian?.cooldown||0)>0?`PULSE · ${Math.ceil(data.guardian.cooldown)}s`:'[F] SIGNAL PULSE';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
   const remaining = Math.ceil(data.remaining); $('time').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   $('time').classList.toggle('urgent', remaining <= 30);
@@ -443,7 +445,7 @@ function buildCommandTrailer(){
   const chair=new THREE.Group();box(chair,.85,.12,.8,0,.52,0,dark);box(chair,.85,.85,.12,0,1,.35,steel);cylinder(chair,.05,.05,.5,0,.25,0,trim);chair.position.set(-3.1,0,1.3);chair.rotation.y=.5;commandGroup.add(chair);
   const lamp=new THREE.PointLight(0x7caeae,22,13,2);lamp.position.set(0,3,1);commandGroup.add(lamp);
   commandGroup.add(new THREE.HemisphereLight(0x8ea9b7,0x192b27,1.5));
-  const deskLabel=textSprite('CLASSIFIED SENSOR FEED','#64ddd4',3);deskLabel.position.set(0,.76,2.02);commandGroup.add(deskLabel);
+
   scene.background=new THREE.Color(0x050b12);positionCommandCamera();
 }
 
@@ -661,3 +663,9 @@ document.addEventListener('click',e=>{if(!optionsMenu.contains(e.target))options
 optionsMenu.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();optionsMenu.open=false;optionsMenu.querySelector('summary').focus();}});
 for(const id of ['replayBriefing','aboutButton','regularSignIn','deviceReopen'])$(id).addEventListener('click',()=>{optionsMenu.open=false;});
 optionsMenu.addEventListener('toggle',()=>{if(optionsMenu.open){release();document.exitPointerLock?.();}});
+
+$('guardianPulse').onclick=()=>send('guardian:stun',{});
+window.addEventListener('keydown',e=>{
+ if(e.key.toLowerCase()!=='f'||e.repeat||state?.role!=='Guardian'||state.phase!=='playing'||!$('introScreen').hidden||document.querySelector('dialog[open]')||['INPUT','TEXTAREA'].includes(e.target.tagName))return;
+ e.preventDefault();send('guardian:stun',{});
+});

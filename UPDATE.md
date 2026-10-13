@@ -1,9 +1,11 @@
-# Room 905 v3.1.2
+# Room 905 v3.2.0 · Guardian
 
-Upload the full project contents, preserving public and all asset directories. Keep Render build npm ci and start npm start. No database/environment changes are required by this update.
+Upload full project contents, preserving public and all assets. Render build npm ci; start npm start. Account settings stay the same.
 
-All navigation/preferences are consolidated in an Options dropdown next to ONLINE: How to Play, About, Sign In/Profile, theme, graphics, sound and browser settings. Outside clicks and Escape dismiss it; preferences remain open for repeated adjustment. The developer sound-tap shortcut still works.
+Removed the CLASSIFIED SENSOR FEED label below the Navigator desk.
 
-The page now fills the viewport, putting the version and disclosure at its bottom on short pages. Longer/mobile pages scroll normally, with no footer overlay on controls. The hotel artwork caption is removed and the artwork is presented as a clean rounded visual.
+Join-order roles: 2 players = Navigator + Recovery; 3 = Navigator + Guardian + Recovery; 4 = Navigator + Guardian + two Recovery. The Guardian explores in first person, sees the Sentinel but never receives signal-gap coordinates. Recovery crew still receive no Sentinel coordinates. Navigator retains the complete hologram.
 
-Application versions in package-lock.json were changed only at the root, leaving dependency versions untouched.
+Guardian F / SIGNAL PULSE button: stun for 3 seconds, 12-second cooldown, 6m range, clear line of sight, not during respawn. Server verifies role, range, cooldown and game phase. Stunned Sentinel cannot move or cause sensor resets. Failed pulses do not consume the ability. The Guardian can carry cargo. Replay clears stun/cooldown and disconnects still return the room to its lobby.
+
+In-game help and flipbook explain the new role. Guardian uses keyboard F or the touch-friendly button. The label-removal and new bodycam UI still need visual playtesting.

@@ -128,7 +128,7 @@ function freshGame(players, now, map = generateMap()) {
   return {
     map,
     started: now, deadline: now + ROUND, elapsed: 0, score: 0, deliveries: 0, catches: 0, damage: 0,
-    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
+    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, role:p.role, stunReady:0, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
     items: map.items.map(i=>({...i})),
     enemy: { ...map.patrol[0], yaw: 0, mode: 'patrol', target: null, patrol: 0, path: [], recalc: 0 },
     ping: null, cue: null, eventId: 0, event: 'Room 905 is open. Recover authorized property and bring them back to the green hallway extraction pad.', outcome: null
@@ -147,8 +147,8 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   const accounts=installAccounts(app,{store:accountStore,databaseUrl});
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.1.2' }));
-  function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : 'Scavenger'; p.input = {}; p.inputAt = 0; }); }
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.2.0' }));
+  function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : room.players.length>=3&&i===1?'Guardian':'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
   }
@@ -235,7 +235,8 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     let waypoint = enemy.path[0];
     if (waypoint && dist(enemy, waypoint) < 0.15) { enemy.path.shift(); waypoint = enemy.path[0]; }
     if (!waypoint && target && clearLine(enemy, target, g.map.walls)) waypoint = target;
-    if (waypoint && !g.devFreeze) {
+    if (now<(enemy.stunnedUntil||0))enemy.mode='stunned';
+    if (waypoint && !g.devFreeze && now>=(enemy.stunnedUntil||0)) {
       const distance = dist(enemy, waypoint), stride = Math.min(distance, (target ? 2.15 : 1.3) * DT);
       if (distance > 0.001) {
         const dx = (waypoint.x - enemy.x) / distance * stride, dz = (waypoint.z - enemy.z) / distance * stride;
@@ -244,7 +245,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         if (!solid(enemy.x, enemy.z + dz, 0.3, g.map.walls)) enemy.z += dz;
       }
     }
-    for (const a of g.actors) if (a.y < 1.1 && dist(a, enemy) < 0.7) resetActor(room, a, now, 'sentinel');
+    for (const a of g.actors) if (now>=(enemy.stunnedUntil||0)&&a.y < 1.1 && dist(a, enemy) < 0.7) resetActor(room, a, now, 'sentinel');
     if (now >= g.deadline) finish(room, 'lost');
   }
   function snapshot(room, now) {
@@ -258,11 +259,12 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         respawn: room.phase==='playing'&&me&&now<(me.respawnUntil||0)?{cause:me.resetCause,penalty:me.resetCause==='sentinel'?10:5,remaining:(me.respawnUntil-now)/1000}:null,
         recovered: g.items.filter(i=>i.delivered).map(i=>({id:i.id,kind:i.kind,name:i.name,value:i.recoveredValue})),
         quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
-        actors: g.actors.map(a => ({ id: a.id, name: a.name, avatar:a.avatar, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
+        actors: g.actors.map(a => ({ id: a.id, name: a.name, role:a.role, avatar:a.avatar, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
         // Only a coarse warning intensity reaches bodycams, never enemy coordinates.
         threat: !navigator && me && room.phase==='playing' ? Math.round(clamp((9-dist(me,g.enemy))/8,0,1)*10)/10 : 0,
-        enemy: navigator ? { x: g.enemy.x, z: g.enemy.z, yaw: g.enemy.yaw, mode: g.enemy.mode, target: g.enemy.target } : null,
+        guardian: p.role==='Guardian'?{cooldown:Math.max(0,((me?.stunReady||0)-now)/1000),range:6}:null,
+        enemy: navigator||p.role==='Guardian' ? { x: g.enemy.x, z: g.enemy.z, yaw: g.enemy.yaw, stunned:Math.max(0,((g.enemy.stunnedUntil||0)-now)/1000), mode: g.enemy.mode, target: g.enemy.target } : null,
         ping: g.ping && now < g.ping.until ? g.ping : null, cue: g.cue && now < g.cue.until ? g.cue : null,
         eventId: g.eventId, event: g.event, eventKind: g.eventKind || 'info', outcome: g.outcome,
         elapsed: g.elapsed
@@ -279,7 +281,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.1.2'});
+    socket.emit('build', {version:'3.2.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -387,6 +389,17 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       const actor = room.game.actors.find(a => a.id === socket.id);
       player.input = { forward: axis('forward'), strafe: axis('strafe'), yaw: typeof data.yaw === 'number' && Number.isFinite(data.yaw) ? ((data.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) : actor.yaw, jump: data.jump === true, sprint: data.sprint === true };
       player.inputAt = now;
+    });
+    socket.on('guardian:stun',(_data,ack)=>{
+      const reply=typeof ack==='function'?ack:()=>{},now=performance.now(),room=rooms.get(socket.data.code);
+      if(!room||room.phase!=='playing')return reply({error:'Launch a shift first.'});
+      const g=room.game,a=g.actors.find(a=>a.id===socket.id);
+      if(a?.role!=='Guardian')return reply({error:'Only the Guardian can pulse the Sentinel.'});
+      if(now<(a.respawnUntil||0))return reply({error:'Wait for your sensor link.'});
+      if(now<a.stunReady)return reply({error:'Pulse is recharging.'});
+      if(dist(a,g.enemy)>6||Math.abs(a.y)>1.5||!clearLine(a,g.enemy,g.map.walls))return reply({error:'Sentinel must be within 6m with a clear signal path.'});
+      a.stunReady=now+12000;g.enemy.stunnedUntil=now+3000;g.enemy.mode='stunned';g.enemy.recalc=now+3000;
+      event(g,`${a.name} paused the Sentinel signal for 3 seconds.`,'success');reply({ok:true});snapshot(room,now);
     });
     socket.on('interact', () => {
       const room = rooms.get(socket.data.code), now = performance.now();
