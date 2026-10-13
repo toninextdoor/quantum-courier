@@ -1,9 +1,9 @@
-# Room 905 v3.1.1 · deployment repair
+# Room 905 v3.1.2
 
-Upload the full updated project contents, preserving public and its asset directories. Replace BOTH package.json and package-lock.json. In Render keep Build Command npm ci and Start Command npm start. Commit, deploy the latest commit, then hard refresh.
+Upload the full project contents, preserving public and all asset directories. Keep Render build npm ci and start npm start. No database/environment changes are required by this update.
 
-The previous app-version edit accidentally changed nested dependency requirements in package-lock.json, including mime-types. This update regenerates the lock from package.json in a clean directory; future releases must change only the top-level app version, never globally replace dependency versions. Node is pinned to the 24.x release line instead of an unbounded >=20 range.
+All navigation/preferences are consolidated in an Options dropdown next to ONLINE: How to Play, About, Sign In/Profile, theme, graphics, sound and browser settings. Outside clicks and Escape dismiss it; preferences remain open for repeated adjustment. The developer sound-tap shortcut still works.
 
-The new M.V.M key/wave/skyline logo and Toronto-area lakeshore hotel setting stay. OVO and Drake references are removed from the live UI. The footer describes the independent fictional game. About describes the Greater Toronto Area inspiration without claiming affiliation with real hotels or organizations. Guest access, accounts, themes, rules and privacy notices stay available.
+The page now fills the viewport, putting the version and disclosure at its bottom on short pages. Longer/mobile pages scroll normally, with no footer overlay on controls. The hotel artwork caption is removed and the artwork is presented as a clean rounded visual.
 
-Accounts still need DATABASE_URL. Do not upload private developer credentials or database URLs to the repository. This update does not create a database or change your Render settings automatically.
+Application versions in package-lock.json were changed only at the root, leaving dependency versions untouched.

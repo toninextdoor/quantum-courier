@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.1.1';
+import { trolleyLayout } from '/trolley-layout.js?v=3.1.2';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.1.1';
+import { checkBrowser } from '/self-check.js?v=3.1.2';
 const $ = id => document.getElementById(id);
 const socket = io();
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -176,7 +176,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.1.1 · SERVER ${data.version}`; if(data.version!=='3.1.1')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.1.2 · SERVER ${data.version}`; if(data.version!=='3.1.2')showError('The server is an older version. Deploy the latest commit, then reload.'); });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -655,3 +655,9 @@ function applyTheme(value){
 }
 $('themeToggle').onclick=()=>applyTheme(document.documentElement.dataset.theme==='light'?'dark':'light');
 applyTheme(document.documentElement.dataset.theme); 
+
+const optionsMenu=$('optionsMenu');
+document.addEventListener('click',e=>{if(!optionsMenu.contains(e.target))optionsMenu.open=false;});
+optionsMenu.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();optionsMenu.open=false;optionsMenu.querySelector('summary').focus();}});
+for(const id of ['replayBriefing','aboutButton','regularSignIn','deviceReopen'])$(id).addEventListener('click',()=>{optionsMenu.open=false;});
+optionsMenu.addEventListener('toggle',()=>{if(optionsMenu.open){release();document.exitPointerLock?.();}});

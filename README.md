@@ -105,3 +105,6 @@ Dark/light themes, top navigation, player identity next to ONLINE, browser setti
 
 ## v3.1.1 deployment repair
 Rebuilt dependency lock, Node 24.x, independent GTA-inspired hotel identity. On Render use npm ci and npm start. Replace both package files from this package. Never globally replace versions in package-lock.json.
+
+## v3.1.2 layout
+Options beside ONLINE consolidates navigation and preferences. The footer sits at the bottom of short pages and follows content on longer pages. Hotel art has no placeholder caption.
