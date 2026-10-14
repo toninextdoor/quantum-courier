@@ -209,9 +209,22 @@ test('host controls difficulty; launch locks it and physics/penalties use select
  for(const difficulty of ['easy','normal','hard']){
  const room=game.rooms.get(code);room.phase='lobby';room.game=null;
  assert.equal((await request(host,'lobby:difficulty',{difficulty})).ok,true);const world=next(crew,'world');await request(host,'start',{});const w=await world,g=room.game;
- assert.equal(w.duration,{easy:240,normal:180,hard:150}[difficulty]);assert.equal(g.deadline-g.started,w.duration*1000);assert.equal((await next(crew,'state')).difficulty,difficulty);assert.equal(g.settings.speed,{easy:.75,normal:1,hard:1.25}[difficulty]);
+ assert.equal(w.duration,{easy:240,normal:180,hard:150}[difficulty]);assert.ok(Math.abs((g.deadline-g.started)-w.duration*1000)<.001);assert.equal((await next(crew,'state')).difficulty,difficulty);assert.equal(g.settings.speed,{easy:.75,normal:1,hard:1.25}[difficulty]);
  assert.match((await request(host,'lobby:difficulty',{difficulty:'normal'})).error,/locked/);
  const a=g.actors[0],h=g.map.hazards[0],deadline=g.deadline;Object.assign(a,{x:h.x,z:h.z,safeUntil:0,y:0});await delay(100);assert.equal(g.deadline,deadline-g.settings.gap*1000);
  }
+ }finally{cs.forEach(s=>s.disconnect());await game.close();}
+});
+
+test('Flux Faults reboot the Sentinel without repeated stun stacking and rearm after exit',async()=>{
+ const game=createGameServer({mapFactory:()=>generateMap(42),databaseUrl:''});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const cs=[];
+ const waitFor=async check=>{const until=Date.now()+2000;while(!check()){if(Date.now()>until)throw Error('Timed out waiting for field state');await delay(20);}};
+ try{
+ for(let i=0;i<2;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}const [nav,crew]=cs;
+ const lp=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Nav'});const code=(await lp).code;await request(crew,'enter',{code,name:'Crew'});await request(nav,'start',{});
+ const g=game.rooms.get(code).game,h=g.map.hazards[0];g.devFreeze=true;const deadline=g.deadline;Object.assign(g.enemy,{x:h.x,z:h.z});await waitFor(()=>g.enemy.mode==='flux-reboot');
+ assert.equal(g.enemy.mode,'flux-reboot');assert.ok(g.enemy.stunnedUntil>require('node:perf_hooks').performance.now()+3500);assert.equal(g.deadline,deadline,'robot fault does not penalize the crew');const expiry=g.enemy.stunnedUntil;
+ await delay(180);assert.equal(g.enemy.stunnedUntil,expiry,'remaining in one field does not extend the reboot');const visible=await next(nav,'state');assert.ok(visible.enemy.stunned>3);assert.equal((await next(crew,'state')).enemy,null,'Recovery still receives no robot coordinates');
+ g.enemy.stunnedUntil=0;g.enemy.faultUntil=0;await delay(80);assert.equal(g.enemy.stunnedUntil,0,'same fault does not retrigger until exit');Object.assign(g.enemy,{x:HOME.x,z:HOME.z});await waitFor(()=>g.enemy.faultZone===-1);assert.equal(g.enemy.faultZone,-1);Object.assign(g.enemy,{x:h.x,z:h.z});await waitFor(()=>g.enemy.stunnedUntil>expiry);assert.ok(g.enemy.stunnedUntil>expiry,JSON.stringify({expiry,enemy:g.enemy,h,phase:game.rooms.get(code).phase}));
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });

@@ -129,3 +129,6 @@ Outer onboarding layout explicitly uses one centered column; the book retains it
 
 ## v3.4 difficulty and Friends presence
 The lobby creator selects Easy, Normal or Hard; settings are server-authoritative and fixed for the round. A brief launch notice announces the difficulty. Friends cards show active game-session presence and sort online friends first.
+
+## v3.5 electromagnetic hazards
+EM Flux Faults affect players and the Sentinel security automaton. The robot reboots for four seconds on entry, allowing coordinated lure tactics. Navigator sees fault locations; Guardian sees the robot but not the faults. The robot uses an original articulated biped model with a blue disabled status.

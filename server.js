@@ -156,7 +156,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.4.0', build:'room905-3.4.0-startup-fix' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.5.0', build:'room905-3.5.0-startup-fix' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : room.players.length>=3&&i===1?'Guardian':'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, difficulty:room.difficulty||'normal', phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
@@ -234,7 +234,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         }
       }
     }
-    const enemy = g.enemy;
+    const enemy = g.enemy;applyFluxFault(g,now);
     const targets = g.actors.filter(a => now >= a.safeUntil && dist(a, HOME) > HOME.r + 1 && ((dist(a, enemy) < 7.5 && clearLine(enemy, a, g.map.walls)) || (a.speed > 3.5 && dist(a, enemy) < 10)));
     targets.sort((a, b) => dist(a, enemy) - dist(b, enemy));
     const target = targets[0]; enemy.mode = target ? 'tracking' : 'patrol'; enemy.target = target?.id || null;
@@ -244,7 +244,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     let waypoint = enemy.path[0];
     if (waypoint && dist(enemy, waypoint) < 0.15) { enemy.path.shift(); waypoint = enemy.path[0]; }
     if (!waypoint && target && clearLine(enemy, target, g.map.walls)) waypoint = target;
-    if (now<(enemy.stunnedUntil||0))enemy.mode='stunned';
+    if (now<(enemy.stunnedUntil||0))enemy.mode=now<(enemy.faultUntil||0)?'flux-reboot':'stunned';
     if (waypoint && !g.devFreeze && now>=(enemy.stunnedUntil||0)) {
       const distance = dist(enemy, waypoint), stride = Math.min(distance, (target ? 2.15 : 1.3) * g.settings.speed * DT);
       if (distance > 0.001) {
@@ -254,8 +254,18 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         if (!solid(enemy.x, enemy.z + dz, 0.3, g.map.walls)) enemy.z += dz;
       }
     }
+    applyFluxFault(g,now);
     for (const a of g.actors) if (now>=(enemy.stunnedUntil||0)&&a.y < 1.1 && dist(a, enemy) < 0.7) resetActor(room, a, now, 'sentinel');
     if (now >= g.deadline) finish(room, 'lost');
+  }
+  function applyFluxFault(g,now){
+    const enemy=g.enemy,index=g.map.hazards.findIndex(h=>dist(enemy,h)<h.r+.3);
+    if(index>=0&&enemy.faultZone!==index){
+      enemy.faultUntil=now+4000;enemy.stunnedUntil=Math.max(enemy.stunnedUntil||0,enemy.faultUntil);enemy.recalc=enemy.stunnedUntil;
+      enemy.mode='flux-reboot';enemy.target=null;
+      event(g,`EM Flux Fault ${index+1}: Sentinel rebooting for 4 seconds.`,'success');
+    }
+    enemy.faultZone=index;
   }
   function snapshot(room, now) {
     const g = room.game;
@@ -291,7 +301,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.4.0'});
+    socket.emit('build', {version:'3.5.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -445,7 +455,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       if(now<(a.respawnUntil||0))return reply({error:'Wait for your sensor link.'});
       if(now<a.stunReady)return reply({error:'Pulse is recharging.'});
       if(dist(a,g.enemy)>6||Math.abs(a.y)>1.5||!clearLine(a,g.enemy,g.map.walls))return reply({error:'Sentinel must be within 6m with a clear signal path.'});
-      a.stunReady=now+12000;g.enemy.stunnedUntil=now+3000;g.enemy.mode='stunned';g.enemy.recalc=now+3000;
+      a.stunReady=now+12000;g.enemy.stunnedUntil=Math.max(g.enemy.stunnedUntil||0,now+3000);g.enemy.mode='stunned';g.enemy.recalc=now+3000;
       event(g,`${a.name} paused the Sentinel signal for 3 seconds.`,'success');reply({ok:true});snapshot(room,now);
     });
     socket.on('interact', () => {

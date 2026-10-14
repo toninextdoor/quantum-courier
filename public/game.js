@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.4.0';
+import { trolleyLayout } from '/trolley-layout.js?v=3.5.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.4.0';
+import { checkBrowser } from '/self-check.js?v=3.5.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 let serverCompatible=true;
@@ -46,9 +46,9 @@ async function dismissIntro(){ document.documentElement.dataset.stage='app';$('i
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
- {kicker:'02 / YOUR CREW',title:'Know your role.<br>Work together.',text:'Player one is Navigator. In crews of 3–4, player two is Guardian; everyone else is Recovery. Two-player crews use Navigator + Recovery.',facts:['Navigator — see signal gaps, the Sentinel and valuables on the hologram. Click the floor to guide your crew.','Guardian — see the Sentinel, but not gaps. F / SIGNAL PULSE pauses it for 3 seconds within 6m and a clear path; recharge takes 12 seconds.','Recovery — follow command, collect valuables and return them to the trolley. WASD / touch arrows move; mouse / swipe turns your view.'],chapter:'CREW ROLES',art:'views'},
+ {kicker:'02 / YOUR CREW',title:'Know your role.<br>Work together.',text:'Player one is Navigator. In crews of 3–4, player two is Guardian; everyone else is Recovery. Two-player crews use Navigator + Recovery.',facts:['Navigator — see EM Flux Faults, the Sentinel and valuables on the hologram. Click the floor to guide your crew.','Guardian — see the Sentinel, but not gaps. F / SIGNAL PULSE pauses it for 3 seconds within 6m and a clear path; recharge takes 12 seconds.','Recovery — follow command, collect valuables and return them to the trolley. WASD / touch arrows move; mouse / swipe turns your view.'],chapter:'CREW ROLES',art:'views'},
  {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Tap E / GRIP at least every 2 seconds to keep hold. Q / DROP releases it. Letting go costs 8% condition.','Walk with property: sprinting into walls costs 12% condition. Less condition means less value.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
- {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a signal beacon. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator can track the beacon and signal gaps. Follow their directions.','Signal gaps cost 5 seconds; Sentinel interference costs 10. Property is dropped and sensors reset at the hallway.','After a brief sensor reset, you reconnect at the hallway. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
+ {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a security automaton. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator sees Flux Faults: damaged power circuits scramble sensors. The same fields force the Sentinel robot to reboot for 4 seconds.','Normal mode: Flux Faults cost 5 seconds; Sentinel interference costs 10. Property is dropped and sensors reset at the hallway.','After a brief sensor reset, you reconnect at the hallway. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
 ];
 const bookIllustrations={
  door:'<rect x="70" y="12" width="140" height="200" rx="3" fill="#211b25" stroke="#d6b77d" stroke-width="2"/><rect x="112" y="47" width="56" height="35" rx="3" fill="none" stroke="#d6b77d"/><text x="140" y="71" text-anchor="middle" fill="#e8d5a9" font-family="serif" font-size="22">905</text><path d="M184 122h18" stroke="#d6b77d" stroke-width="4"/><path d="M40 213h200" stroke="#6f5b45"/>',
@@ -178,7 +178,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.4.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.4.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.4.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.5.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.5.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.5.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -214,7 +214,7 @@ socket.on('state', data => {
   $('resetScreen').hidden=!data.respawn;
   if(data.respawn){
     if(!previous?.respawn)release();
-    $('resetCause').textContent=data.respawn.cause==='sentinel'?'SENTINEL INTERFERENCE':'SIGNAL GAP';
+    $('resetCause').textContent=data.respawn.cause==='sentinel'?'SENTINEL INTERFERENCE':'EM FLUX FAULT';
     $('resetPenalty').textContent=`−${data.respawn.penalty} seconds · sensor reset`;
     $('resetCountdown').textContent=`Reconnecting in ${Math.max(.1,data.respawn.remaining).toFixed(1)}s…`;
   }
@@ -226,7 +226,7 @@ socket.on('state', data => {
   $('front').hidden = true; $('game').hidden = false; $('footer').hidden = false; document.body.classList.add('inGame');
   $('sector').textContent = `ROOM 905 / LAYOUT ${data.mapSeed?.toString(16).toUpperCase() || '—'}`;
   $('role').textContent = nav ? 'NAVIGATOR' : data.role==='Guardian'?'GUARDIAN':'RECOVERY CREW'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : data.role==='Guardian'?'GUARDIAN / SENTINEL LINK':'BODYCAM / SENSOR BLIND · TRUST COMMAND';
-  if(data.role!==previous?.role)$('scavengerInfo').querySelector('p').textContent=data.role==='Guardian'?'Your bodycam can see the Sentinel, but signal gaps stay hidden. Follow the Navigator. F / SIGNAL PULSE pauses the Sentinel for 3 seconds within 6m and a clear path; recharge takes 12 seconds. You can also grab property and keep tapping E / GRIP while carrying.':'Your bodycam cannot locate signal gaps or the Sentinel. Red edges and heartbeat warn when it is close. Follow your Navigator. While carrying, tap E / GRIP every 2 seconds.';
+  if(data.role!==previous?.role)$('scavengerInfo').querySelector('p').textContent=data.role==='Guardian'?'Your bodycam can see the Sentinel, but EM Flux Faults stay hidden. Follow the Navigator. F / SIGNAL PULSE pauses the Sentinel for 3 seconds within 6m and a clear path; recharge takes 12 seconds. You can also grab property and keep tapping E / GRIP while carrying.':'Your bodycam cannot locate EM Flux Faults or the Sentinel. Red edges and heartbeat warn when it is close. Follow your Navigator. While carrying, tap E / GRIP every 2 seconds.';
   $('guardianPulse').hidden=data.role!=='Guardian';$('guardianPulse').disabled=data.phase!=='playing'||!!data.respawn||(data.guardian?.cooldown||0)>0;$('guardianPulse').textContent=(data.guardian?.cooldown||0)>0?`PULSE · ${Math.ceil(data.guardian.cooldown)}s`:'[F] SIGNAL PULSE';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
   const remaining = Math.ceil(data.remaining); $('time').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
@@ -382,10 +382,12 @@ function buildWorld(nav) {
   trolleyCargoGroup=new THREE.Group();trolleyCargoGroup.name="recovered-property";staticGroup.add(trolleyCargoGroup);trolleyKey="";
   const homeLabel=textSprite('RECOVERY TROLLEY / SAFE','#b9f8bd',nav?3.8:2.3,!nav);homeLabel.position.set(home.x,nav?.8:2.65,home.z);staticGroup.add(homeLabel);
   const homeLight=new THREE.PointLight(mint,8,6,1.5);homeLight.position.set(home.x,2,home.z);staticGroup.add(homeLight);
-  for(const h of world.hazards){
-    const puddle=new THREE.Mesh(new THREE.CircleGeometry(h.r,32),material(0xb1482e,{emissive:0xe7552b,emissiveIntensity:.65}));puddle.rotation.x=-Math.PI/2;puddle.position.set(h.x,.015,h.z);staticGroup.add(puddle);ring(staticGroup,h.r,0xff9860,h.x,h.z);
-    // Emissive breach surfaces keep their glow without a light per breach.
-    if(nav){const label=textSprite('SIGNAL GAP','#ff9060',1.8,false);label.position.set(h.x,1,h.z);staticGroup.add(label);}
+  for(const [i,h]of world.hazards.entries()){
+    const field=new THREE.Mesh(new THREE.CircleGeometry(h.r,32),new THREE.MeshBasicMaterial({color:0x3687ae,transparent:true,opacity:.24}));field.rotation.x=-Math.PI/2;field.position.set(h.x,.018,h.z);staticGroup.add(field);
+    ring(staticGroup,h.r,0x64b7dd,h.x,h.z);ring(staticGroup,h.r*.48,0xe7b978,h.x,h.z,.025);
+    const circuits=new THREE.Group();circuits.position.set(h.x,.03,h.z);staticGroup.add(circuits);
+    for(let j=0;j<6;j++){const trace=box(circuits,h.r*.38,.018,.035,Math.cos(j*Math.PI/3)*h.r*.7,0,Math.sin(j*Math.PI/3)*h.r*.7,new THREE.MeshBasicMaterial({color:j%2?0x64b7dd:0xe7b978}));trace.rotation.y=-j*Math.PI/3;}
+    const label=textSprite(`EMF-${String(i+1).padStart(2,'0')} / FLUX FAULT`,'#9dd9f5',2,false);label.position.set(h.x,1,h.z);staticGroup.add(label);
   }
   if(nav){
     const grid=new THREE.GridHelper(28,28,0x4f8b90,0x304951);grid.position.set(14,.015,12);staticGroup.add(grid);
@@ -495,12 +497,20 @@ function makeActor(name, nav,avatar='amber') {
   return g;
 }
 function makeEnemy() {
-  // Abstract signal beacon: no creature, weapon or injury depiction.
-  const g=new THREE.Group(),metal=material(0x475362,{metalness:.6}),glow=new THREE.MeshBasicMaterial({color:0xfac875,transparent:true,opacity:.7});
-  cylinder(g,.22,.35,.25,0,.15,0,metal);cylinder(g,.055,.055,1.4,0,.9,0,metal);
-  const beacon=new THREE.Mesh(new THREE.OctahedronGeometry(.3),glow);beacon.position.y=1.6;g.add(beacon);
-  ring(g,.65,cyan,0,0,.035);
-  const label=textSprite('SENTINEL / SIGNAL','#fac875',2,false);label.position.y=2.25;g.add(label);g.userData.label=label;return g;
+  const g=new THREE.Group(),shell=material(0x525d69,{metalness:.65,roughness:.5}),dark=material(0x18222e),trim=material(0xc2a676,{metalness:.7}),optic=new THREE.MeshBasicMaterial({color:0xf2ba6c});
+  const legs=[],arms=[];
+  for(const side of [-1,1]){
+    const leg=new THREE.Group();leg.position.set(side*.21,.83,0);g.add(leg);
+    cylinder(leg,.075,.07,.29,0,-.18,0,shell);sphere(leg,.09,0,-.35,0,trim);box(leg,.12,.28,.14,0,-.52,0,shell);box(leg,.18,.1,.32,0,-.72,-.055,dark);legs.push(leg);
+    const arm=new THREE.Group();arm.position.set(side*.43,1.3,0);g.add(arm);sphere(arm,.1,0,0,0,trim);box(arm,.13,.3,.15,0,-.19,0,shell);sphere(arm,.075,0,-.37,0,dark);box(arm,.11,.22,.13,0,-.49,0,shell);arms.push(arm);
+  }
+  box(g,.47,.17,.3,0,.82,0,dark);box(g,.67,.56,.38,0,1.18,0,shell);
+  for(const x of [-.23,.23])box(g,.035,.4,.025,x,1.18,-.205,trim);
+  box(g,.2,.1,.025,0,1.28,-.21,optic);box(g,.38,.03,.025,0,1.07,-.21,dark);
+  cylinder(g,.065,.065,.13,0,1.52,0,trim);box(g,.46,.28,.32,0,1.72,0,dark);box(g,.36,.07,.035,0,1.74,-.18,optic);box(g,.5,.07,.35,0,1.9,0,shell);
+  cylinder(g,.016,.016,.2,.17,2,0,trim);sphere(g,.035,.17,2.11,0,optic);box(g,.35,.34,.14,0,1.23,.25,dark);
+  const label=textSprite('SENTINEL / SECURITY AUTOMATON','#fac875',2.4,false);label.position.y=2.45;g.add(label);
+  g.userData={label,legs,arms,optic};return g;
 }
 function updateEntities(nav) {
   if(!scene || !actorGroup || !state)return;
@@ -593,7 +603,7 @@ function frame(now) {
   const me=state.actors.find(a=>a.id===socket.id);
   for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,pos.y||0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
   for(const [id,mesh]of items){if(!mesh.userData.carrier)mesh.rotation.y=now*.0004+id;else{const a=state.actors.find(a=>a.id===mesh.userData.carrier);if(a){mesh.position.set(a.x+Math.sin(a.yaw)*.45,(a.y||0)+.5,a.z-Math.cos(a.yaw)*.45);mesh.rotation.y=-a.yaw;}}}
-  if(state.enemy&&enemyGroup){const pos=interpolate(now,state.enemy,previous?.enemy);enemyGroup.position.set(pos.x,.035*Math.sin(now*.004),pos.z);enemyGroup.rotation.y=-state.enemy.yaw;}
+  if(state.enemy&&enemyGroup){const pos=interpolate(now,state.enemy,previous?.enemy),halted=(state.enemy.stunned||0)>0;const moved=previous?.enemy?Math.hypot(state.enemy.x-previous.enemy.x,state.enemy.z-previous.enemy.z)>.004:false;enemyGroup.position.set(pos.x,halted?0:moved?.018*Math.sin(now*.014):0,pos.z);enemyGroup.rotation.y=-state.enemy.yaw;const walk=!halted&&moved?Math.sin(now*.009)*.35:0;enemyGroup.userData.legs.forEach((leg,i)=>leg.rotation.x=i?walk:-walk);enemyGroup.userData.arms.forEach((arm,i)=>arm.rotation.x=i?-walk:walk);enemyGroup.userData.optic.color.setHex(halted?0x6cc9ed:0xf2ba6c);enemyGroup.userData.label.material.opacity=halted?.6+.3*Math.sin(now*.012):1;}
   if(state.ping){pingGroup.position.set(state.ping.x,.015,state.ping.z);pingGroup.scale.setScalar(1+.1*Math.sin(now*.006));}
   if(!nav&&me){
     const pos=interpolate(now,me,previous?.actors.find(a=>a.id===socket.id));

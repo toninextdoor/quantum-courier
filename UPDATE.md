@@ -1,11 +1,11 @@
-# Room 905 v3.4.0
+# Room 905 v3.5.0 · Flux Faults and Sentinel automaton
 
-Upload the contents of room-905-v3.4.0.zip to the repository root, preserving public. Render npm ci / npm start; existing DATABASE_URL unchanged. Verify /health returns 3.4.0 and reload every player's browser.
+Upload full contents of room-905-v3.5.0.zip to repository root, preserving public. Render npm ci / npm start; existing account/database configuration unchanged. Verify /health reports 3.5.0 and reload all players.
 
-Lobby creator gets Easy / Normal / Hard difficulty tabs. Only the host can change them, before a shift; settings synchronize across the crew and remain locked during play. Normal preserves the current balance. Easy: 240 seconds, 0.75x Sentinel speed, gap/Sentinel penalties 3/7 seconds. Normal: 180 seconds, 1x, 5/10 seconds. Hard: 150 seconds, 1.25x, 7/12 seconds. All retain $600, randomized map, cargo rules and Guardian pulse. Replay retains the selected setting.
+Signal gaps become EM Flux Faults: damaged power circuits generate sensor-disrupting electromagnetic fields. Navigator sees blue circuit fields with EMF identifiers. Guardian and Recovery still do not receive field locations. Player reset and difficulty penalties are preserved.
 
-A short nonblocking overlay at each round's start displays difficulty and Good luck, crew. The round timer continues normally.
+Sentinel now shares that hazard: entering a field forces a 4-second reboot, with no movement or player resets. Staying in the same field does not extend the reboot; the field rearms for that robot after it leaves. A new field can disrupt it again. Guardian pulse cannot shorten a longer field reboot. Robot disruption does not subtract crew time. Coordinate Navigator directions and Guardian tracking to lure it into a field.
 
-Friends have cleaner cards, colored online/offline badges, online-first sorting and disabled Invite when offline. Online means a connected, signed-in game session, not someone merely logged into a browser cookie. Presence is visible only for accepted friends, refreshes while the panel is open and supports multiple devices. Server still revalidates friend/session/lobby access when inviting.
+Replaced the beacon/vacuum-like model with an original biped security automaton: articulated arms and legs, industrial torso, scanner head, antenna and status optics. Walking animates; optics turn blue while disabled. No weapons, injuries or graphic effects are added. Help and briefing terminology updated.
 
-Verified with host-authority/difficulty-setting/penalty tests and friend presence/disconnect tests. Visual playtest still required.
+Server authority and private role views are covered by tests; robot proportions/animation and field visuals need an in-browser playtest.
