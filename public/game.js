@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.3.3';
+import { trolleyLayout } from '/trolley-layout.js?v=3.4.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.3.3';
+import { checkBrowser } from '/self-check.js?v=3.4.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 let serverCompatible=true;
@@ -178,7 +178,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.3.3 · SERVER ${data.version}`; serverCompatible=data.version==='3.3.3';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.3.3, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.4.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.4.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.4.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -192,6 +192,7 @@ socket.on('lobby', data => {
   }));
   $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. With 3–4 players, the second is Guardian; the rest are Recovery crew.');
   $('start').disabled = data.host !== socket.id || data.players.length < 2;
+  const difficulty=data.difficulty||'normal';document.querySelectorAll('[data-difficulty]').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.difficulty===difficulty));b.disabled=data.host!==socket.id||data.phase!=='lobby';});$('difficultyDetails').textContent=({easy:'4 minutes · slower Sentinel · gaps −3s / Sentinel −7s',normal:'3 minutes · standard Sentinel · gaps −5s / Sentinel −10s',hard:'2½ minutes · faster Sentinel · gaps −7s / Sentinel −12s'})[difficulty]+(data.host===socket.id?'':' · host selects');
   $('start').textContent = data.host === socket.id ? 'Enter Room 905 →' : 'Waiting for host to launch…';
   if (data.phase === 'lobby') {
     release(); document.exitPointerLock?.(); state = previous = null; updateAmbience();
@@ -219,7 +220,7 @@ socket.on('state', data => {
   }
   const nav = data.role === 'Navigator', me = data.actors.find(a => a.id === socket.id);
   if (currentRound !== data.roundId) {
-    currentRound = data.roundId; yaw = me?.yaw || 0; pitch = 0; lastEvent = -1; lastCue = ''; previous = null; release();
+    currentRound = data.roundId;showRoundWelcome(data); yaw = me?.yaw || 0; pitch = 0; lastEvent = -1; lastCue = ''; previous = null; release();
     $('result').hidden = true; $('chatLog').replaceChildren();
   }
   $('front').hidden = true; $('game').hidden = false; $('footer').hidden = false; document.body.classList.add('inGame');
@@ -698,7 +699,7 @@ socket.on('friend:invitation',invite=>{
  pendingInvites.set(invite.id,invite);$('inviteNotice').textContent=`${invite.from} invited you to lobby ${invite.code}.`;$('friendInviteBanner').hidden=false;
  if($('friendsDialog').open)loadFriends();
 });
-function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;row.append(image,name);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;row.append(b);}return row;}
+function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;const identity=document.createElement('div');identity.className='friendIdentity';identity.append(name);if(typeof user.online==='boolean'){const status=document.createElement('span');status.className=user.online?'presence online':'presence offline';status.textContent=user.online?'Online':'Offline';identity.append(status);}row.append(image,identity);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;if(label==='Invite'&&user.online===false){b.disabled=true;b.title='Your friend needs the game open.';}row.append(b);}return row;}
 async function friendAction(action,username){try{const r=await fetch('/api/friends/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username})}),d=await r.json();if(!r.ok)throw Error(d.error);$('friendsStatus').textContent=action==='request'?'Friend request sent.':'Friends updated.';await loadFriends(true);}catch(e){$('friendsStatus').textContent=e.message;}}
 function inviteFriend(username){socket.timeout(5000).emit('friend:invite',{username},(err,r)=>{$('friendsStatus').textContent=err?'Invite timed out.':r.error||'Lobby invitation sent.';});}
 function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
@@ -706,7 +707,7 @@ async function loadFriends(keepStatus=false){
  $('friendForm').hidden=!accountUser;
  if(!accountUser){$('friendsStatus').textContent='Sign in from Options to add friends and receive invitations.';for(const id of ['friendList','friendIncoming','friendOutgoing','friendInvites'])$(id).replaceChildren();return;}
  try{const r=await fetch('/api/friends',{credentials:'same-origin'}),d=await r.json();if(!r.ok)throw Error(d.error);if(!keepStatus)$('friendsStatus').textContent=`${d.friends.length} friends`;
- const lists=[['friendList',d.friends,u=>[['Invite',()=>inviteFriend(u.username)],['Remove',()=>friendAction('remove',u.username)]]],['friendIncoming',d.incoming,u=>[['Accept',()=>friendAction('accept',u.username)],['Decline',()=>friendAction('decline',u.username)]]],['friendOutgoing',d.outgoing,u=>[['Cancel',()=>friendAction('remove',u.username)]]]];
+ const lists=[['friendList',[...d.friends].sort((a,b)=>Number(b.online)-Number(a.online)||a.username.localeCompare(b.username)),u=>[['Invite',()=>inviteFriend(u.username)],['Remove',()=>friendAction('remove',u.username)]]],['friendIncoming',d.incoming,u=>[['Accept',()=>friendAction('accept',u.username)],['Decline',()=>friendAction('decline',u.username)]]],['friendOutgoing',d.outgoing,u=>[['Cancel',()=>friendAction('remove',u.username)]]]];
  for(const [id,users,actions]of lists){$(id).replaceChildren(...users.map(u=>friendRow(u,actions(u))));if(!users.length)$(id).textContent='None yet.';}
  for(const [id,v]of pendingInvites)if(v.expires<Date.now())pendingInvites.delete(id);
  $('friendInvites').replaceChildren(...[...pendingInvites.values()].map(v=>friendRow({username:`${v.from} · ${v.code}`,avatar:'amber'},[['Join',()=>joinInvitation(v.id)],['Decline',()=>{pendingInvites.delete(v.id);loadFriends(true);}]])));if(!pendingInvites.size)$('friendInvites').textContent='No active invitations.';
@@ -714,3 +715,10 @@ async function loadFriends(keepStatus=false){
 }
 $('friendForm').onsubmit=e=>{e.preventDefault();friendAction('request',$('friendUsername').value);};
 setInterval(()=>{if($('friendsDialog').open&&!document.hidden)loadFriends(true);},8000);
+
+let roundWelcomeTimer;
+function showRoundWelcome(data){
+ clearTimeout(roundWelcomeTimer);$('roundDifficulty').textContent=`${data.difficultyLabel||'Normal'} difficulty`;$('roundWelcome').hidden=data.phase!=='playing';
+ roundWelcomeTimer=setTimeout(()=>{$('roundWelcome').hidden=true;},2400);
+}
+document.querySelectorAll('[data-difficulty]').forEach(b=>b.onclick=()=>send('lobby:difficulty',{difficulty:b.dataset.difficulty}));

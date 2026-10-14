@@ -126,3 +126,6 @@ Use room-905-v3.3.2.zip. Its files are directly at the archive root; verify BUIL
 
 ## v3.3.3 briefing placement
 Outer onboarding layout explicitly uses one centered column; the book retains its two-page design. Use the uniquely named room-905-v3.3.3.zip.
+
+## v3.4 difficulty and Friends presence
+The lobby creator selects Easy, Normal or Hard; settings are server-authoritative and fixed for the round. A brief launch notice announces the difficulty. Friends cards show active game-session presence and sort online friends first.

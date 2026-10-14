@@ -199,3 +199,19 @@ test('Guardian role visibility and stun authority, range, cooldown and replay re
  g.deadline=0;await delay(100);assert.equal(room.phase,'finished');await request(nav,'start',{});assert.equal(room.game.actors[0].stunReady,0);let fresh=await next(guard,'state');while(fresh.roundId!==room.game.started)fresh=await next(guard,'state');assert.equal(fresh.guardian.cooldown,0);
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });
+
+test('host controls difficulty; launch locks it and physics/penalties use selected settings',async()=>{
+ const game=createGameServer({mapFactory:()=>generateMap(42),databaseUrl:''});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const cs=[];
+ try{
+ for(let i=0;i<2;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}const [host,crew]=cs;
+ const lp=next(host,'lobby');await request(host,'enter',{create:true,name:'Host'});const code=(await lp).code;await request(crew,'enter',{code,name:'Crew'});
+ assert.match((await request(crew,'lobby:difficulty',{difficulty:'hard'})).error,/creator/);assert.match((await request(host,'lobby:difficulty',{difficulty:'other'})).error,/Choose/);
+ for(const difficulty of ['easy','normal','hard']){
+ const room=game.rooms.get(code);room.phase='lobby';room.game=null;
+ assert.equal((await request(host,'lobby:difficulty',{difficulty})).ok,true);const world=next(crew,'world');await request(host,'start',{});const w=await world,g=room.game;
+ assert.equal(w.duration,{easy:240,normal:180,hard:150}[difficulty]);assert.equal(g.deadline-g.started,w.duration*1000);assert.equal((await next(crew,'state')).difficulty,difficulty);assert.equal(g.settings.speed,{easy:.75,normal:1,hard:1.25}[difficulty]);
+ assert.match((await request(host,'lobby:difficulty',{difficulty:'normal'})).error,/locked/);
+ const a=g.actors[0],h=g.map.hazards[0],deadline=g.deadline;Object.assign(a,{x:h.x,z:h.z,safeUntil:0,y:0});await delay(100);assert.equal(g.deadline,deadline-g.settings.gap*1000);
+ }
+ }finally{cs.forEach(s=>s.disconnect());await game.close();}
+});

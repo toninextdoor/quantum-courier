@@ -53,6 +53,7 @@ test('accounts unavailable without a database while guest room creation remains 
  assert.match((await rpc(third,'friend:join',{id:invite.id})).error,/expired|unavailable/);
  assert.equal((await rpc(friend,'friend:join',{id:invite.id})).ok,true);assert.equal(game.rooms.get(code).players.length,2);
  assert.match((await rpc(friend,'friend:join',{id:invite.id})).error,/expired|unavailable/);
+ const presence=await fetch(url+'/api/friends',{headers:{Cookie:cookies[0]}}).then(r=>r.json());assert.equal(presence.friends[0].online,true);friend.disconnect();await new Promise(r=>setTimeout(r,100));const offline=await fetch(url+'/api/friends',{headers:{Cookie:cookies[0]}}).then(r=>r.json());assert.equal(offline.friends[0].online,false);
  assert.equal((await action(cookies[1],'remove','host_user')).status,200);assert.equal(await store.areFriends('host_user','friend_user'),false);
  await new Promise(r=>setTimeout(r,2100));assert.match((await rpc(host,'friend:invite',{username:'friend_user'})).error,/accepted friends/);
  }finally{sockets.forEach(s=>s.disconnect());await game.close();}

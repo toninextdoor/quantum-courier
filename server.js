@@ -8,6 +8,7 @@ const { randomInt, createHash, timingSafeEqual } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const { Server } = require('socket.io');
 const W = 28, H = 24, DT = 0.05, ROUND = 180000, QUOTA = 600, RADIUS = 0.28;
+const DIFFICULTIES={easy:{label:'Easy',seconds:240,speed:.75,gap:3,sentinel:7},normal:{label:'Normal',seconds:180,speed:1,gap:5,sentinel:10},hard:{label:'Hard',seconds:150,speed:1.25,gap:7,sentinel:12}};
 const HOME = { x: 3.5, z: 20.5, r: 1.8 };
 const WALLS = [
   { x: 0, z: 0, w: W, d: 1 }, { x: 0, z: H - 1, w: W, d: 1 },
@@ -125,10 +126,11 @@ function resolvePlatformOverlap(a,map) {
   const clear=candidates.find(p=>!solid(p.x,p.z,RADIUS,map.walls)&&!map.platforms.some(b=>platformOverlap({...p,y:a.y},b)));
   if(clear){a.x=clear.x;a.z=clear.z;}
 }
-function freshGame(players, now, map = generateMap()) {
+function freshGame(players, now, map = generateMap(),difficulty='normal') {
   return {
     map,
-    started: now, deadline: now + ROUND, elapsed: 0, score: 0, deliveries: 0, catches: 0, damage: 0,
+    difficulty, settings:DIFFICULTIES[difficulty],
+    started: now, deadline: now + DIFFICULTIES[difficulty].seconds*1000, elapsed: 0, score: 0, deliveries: 0, catches: 0, damage: 0,
     actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, role:p.role, stunReady:0, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
     items: map.items.map(i=>({...i})),
     enemy: { ...map.patrol[0], yaw: 0, mode: 'patrol', target: null, patrol: 0, path: [], recalc: 0 },
@@ -147,13 +149,17 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   app.get('/vendor/three.module.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules/three/build/three.module.js')));
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   const accounts=installAccounts(app,{store:accountStore,databaseUrl});
-  installFriends(app,accounts,(names)=>{for(const s of io.sockets.sockets.values())if(names.includes(s.data.friendUser))s.emit('friends:changed');});
+  installFriends(app,accounts,(names)=>{for(const s of io.sockets.sockets.values())if(names.includes(s.data.friendUser))s.emit('friends:changed');},async(names)=>{
+    const wanted=new Set(names),online=new Set();
+    await Promise.all([...io.sockets.sockets.values()].filter(s=>wanted.has(s.data.friendUser)).map(async s=>{try{const u=await accounts.lookup(s.handshake.headers.cookie);if(s.connected&&u&&wanted.has(u.username))online.add(u.username);}catch{}}));
+    return online;
+  });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.3.3', build:'room905-3.3.3-startup-fix' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.4.0', build:'room905-3.4.0-startup-fix' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : room.players.length>=3&&i===1?'Guardian':'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
-    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
+    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, difficulty:room.difficulty||'normal', phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
   }
   function event(g, text, kind = 'info') { g.eventId++; g.event = text; g.eventKind = kind; }
   function cargoDamage(g, item, amount) {
@@ -176,7 +182,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       cargoDamage(g, item, cause === 'sentinel' ? 35 : 20); a.carrying = null; a.gripUntil=null;
     }
     a.x = HOME.x; a.z = HOME.z; a.y = 0; a.vy = 0; a.grounded = true; a.speed = 0; a.safeUntil = now + 3000; a.respawnUntil = now + 1200; a.resetCause = cause;
-    g.deadline -= cause === 'sentinel' ? 10000 : 5000;
+    g.deadline -= (cause === 'sentinel' ? g.settings.sentinel : g.settings.gap)*1000;
     if (cause === 'sentinel') g.catches++;
     event(g, `${a.name}: ${cause === 'sentinel' ? 'signal interrupted by the Sentinel. −10s' : 'crossed a signal gap. −5s'}. Cargo dropped; returned to extraction.`, 'danger');
   }
@@ -240,7 +246,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     if (!waypoint && target && clearLine(enemy, target, g.map.walls)) waypoint = target;
     if (now<(enemy.stunnedUntil||0))enemy.mode='stunned';
     if (waypoint && !g.devFreeze && now>=(enemy.stunnedUntil||0)) {
-      const distance = dist(enemy, waypoint), stride = Math.min(distance, (target ? 2.15 : 1.3) * DT);
+      const distance = dist(enemy, waypoint), stride = Math.min(distance, (target ? 2.15 : 1.3) * g.settings.speed * DT);
       if (distance > 0.001) {
         const dx = (waypoint.x - enemy.x) / distance * stride, dz = (waypoint.z - enemy.z) / distance * stride;
         enemy.yaw = Math.atan2(dx, -dz);
@@ -259,8 +265,9 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       const visible = object => navigator || (me && dist(me, object) < 1.8 && Math.abs(me.y-(object.y||0))<.7 && clearLine(me, object,g.map.walls));
       io.to(p.id).emit('state', {
         roundId: g.started, mapSeed:g.map.seed, phase: room.phase, role: p.role, remaining: room.phase === 'finished' ? g.finalRemaining : Math.max(0, (g.deadline - now) / 1000),
-        respawn: room.phase==='playing'&&me&&now<(me.respawnUntil||0)?{cause:me.resetCause,penalty:me.resetCause==='sentinel'?10:5,remaining:(me.respawnUntil-now)/1000}:null,
+        respawn: room.phase==='playing'&&me&&now<(me.respawnUntil||0)?{cause:me.resetCause,penalty:me.resetCause==='sentinel'?g.settings.sentinel:g.settings.gap,remaining:(me.respawnUntil-now)/1000}:null,
         recovered: g.items.filter(i=>i.delivered).map(i=>({id:i.id,kind:i.kind,name:i.name,value:i.recoveredValue})),
+        difficulty:g.difficulty,difficultyLabel:g.settings.label, duration:g.settings.seconds,
         quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
         actors: g.actors.map(a => ({ id: a.id, name: a.name, role:a.role, avatar:a.avatar, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
@@ -284,7 +291,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.3.3'});
+    socket.emit('build', {version:'3.4.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -405,14 +412,21 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
        await enterRoom({code:invite.code,name:u.username},r=>{if(r.ok)invitations.delete(invite.id);reply(r);});
       }catch{reply({error:'Could not join this invitation.'});}
     });
+    socket.on('lobby:difficulty',(data,ack)=>{
+      const reply=typeof ack==='function'?ack:()=>{},room=rooms.get(socket.data.code);
+      if(!room||room.players[0]?.id!==socket.id)return reply({error:'Only the lobby creator can change difficulty.'});
+      if(room.phase!=='lobby')return reply({error:'Difficulty is locked during a shift.'});
+      if(!Object.hasOwn(DIFFICULTIES,data?.difficulty))return reply({error:'Choose Easy, Normal or Hard.'});
+      room.difficulty=data.difficulty;roster(room);reply({ok:true});
+    });
     socket.on('start', (_data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, room = rooms.get(socket.data.code);
       if (!room || room.players[0]?.id !== socket.id && !isDev(socket)) return reply({ error: 'The host launches the shift.' });
       if (room.players.length < 2) return reply({ error: 'Need a Navigator and at least one Scavenger.' });
       if (room.phase === 'playing') return reply({ error: 'Shift already running.' });
-      roles(room); room.phase = 'playing'; room.notice = ''; room.game = freshGame(room.players, performance.now(), mapFactory());
+      roles(room); room.phase = 'playing'; room.notice = ''; room.game = freshGame(room.players, performance.now(), mapFactory(),room.difficulty||'normal');
       reply({ ok: true }); roster(room);
-      for (const p of room.players) io.to(p.id).emit('world', { width: W, depth: H, walls: room.game.map.walls, platforms:room.game.map.platforms, seed:room.game.map.seed, hazards: p.role === 'Navigator' ? room.game.map.hazards : [], home: HOME, quota: QUOTA, duration: ROUND / 1000 });
+      for (const p of room.players) io.to(p.id).emit('world', { width: W, depth: H, walls: room.game.map.walls, platforms:room.game.map.platforms, seed:room.game.map.seed, hazards: p.role === 'Navigator' ? room.game.map.hazards : [], home: HOME, quota: QUOTA, duration: room.game.settings.seconds,difficulty:room.game.difficulty });
       snapshot(room, performance.now());
     });
     socket.on('input', data => {
