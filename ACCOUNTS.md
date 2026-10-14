@@ -26,3 +26,6 @@ HTTP/Socket.io integration tests verify registration, password checks, token rev
 References:
 https://render.com/docs/postgresql-creating-connecting
 https://nodejs.org/api/crypto.html#cryptoscryptpassword-salt-keylen-options-callback
+
+## v3.3 Friends data
+The existing DATABASE_URL is used for the new room905_friends table, added automatically. It stores two usernames, the requester and pending/accepted status. Both must accept a friendship before invitations are permitted. Removing a friend deletes the relationship; deleting an account cascades to friendship rows. Invitation tokens and recipient/lobby information live in process memory for two minutes, with no offline queue. Profiles remain private except usernames/avatars shared in friend lists and rooms. See UPDATE.md for deployment and use.

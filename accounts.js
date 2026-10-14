@@ -11,7 +11,7 @@ function postgresStore(url){
  const {Pool}=require('pg');const pool=new Pool({connectionString:url,max:4,connectionTimeoutMillis:5000,statement_timeout:5000});
  pool.on('error',()=>{});
  let ready;
- const init=()=>ready||(ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS room905_users(username VARCHAR(18) PRIMARY KEY,password_hash TEXT NOT NULL,avatar VARCHAR(12) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());CREATE TABLE IF NOT EXISTS room905_sessions(token_hash CHAR(64) PRIMARY KEY,username VARCHAR(18) NOT NULL REFERENCES room905_users(username) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL);CREATE INDEX IF NOT EXISTS room905_session_expiry ON room905_sessions(expires_at);`);})().catch(e=>{ready=null;throw e;}));
+ const init=()=>ready||(ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS room905_users(username VARCHAR(18) PRIMARY KEY,password_hash TEXT NOT NULL,avatar VARCHAR(12) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());CREATE TABLE IF NOT EXISTS room905_sessions(token_hash CHAR(64) PRIMARY KEY,username VARCHAR(18) NOT NULL REFERENCES room905_users(username) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL);CREATE INDEX IF NOT EXISTS room905_session_expiry ON room905_sessions(expires_at);CREATE TABLE IF NOT EXISTS room905_friends(a VARCHAR(18) REFERENCES room905_users(username) ON DELETE CASCADE,b VARCHAR(18) REFERENCES room905_users(username) ON DELETE CASCADE,requester VARCHAR(18) NOT NULL,status VARCHAR(10) NOT NULL CHECK(status IN ('pending','accepted')),PRIMARY KEY(a,b),CHECK(a<>b));`);})().catch(e=>{ready=null;throw e;}));
  const query=async(sql,args)=>{await init();return pool.query(sql,args);};
  return {
   async user(name){return (await query('SELECT * FROM room905_users WHERE username=$1',[name])).rows[0];},
@@ -21,6 +21,10 @@ function postgresStore(url){
   async revoke(hash){await query('DELETE FROM room905_sessions WHERE token_hash=$1',[hash]);},
   async avatar(name,avatar){await query('UPDATE room905_users SET avatar=$2 WHERE username=$1',[name,avatar]);},
   async remove(name){await query('DELETE FROM room905_users WHERE username=$1',[name]);},
+  async friendList(name){return (await query(`SELECT f.*,u.username,u.avatar FROM room905_friends f JOIN room905_users u ON u.username=CASE WHEN f.a=$1 THEN f.b ELSE f.a END WHERE f.a=$1 OR f.b=$1 ORDER BY u.username`,[name])).rows;},
+  async friendRequest(name,other){const [a,b]=[name,other].sort();return (await query("INSERT INTO room905_friends(a,b,requester,status) VALUES($1,$2,$3,'pending') ON CONFLICT DO NOTHING RETURNING a",[a,b,name])).rowCount>0;},
+  async friendAction(name,other,action){const [a,b]=[name,other].sort();if(action==='accept')return (await query("UPDATE room905_friends SET status='accepted' WHERE a=$1 AND b=$2 AND status='pending' AND requester=$3 RETURNING a",[a,b,other])).rowCount>0;return (await query('DELETE FROM room905_friends WHERE a=$1 AND b=$2 RETURNING a',[a,b])).rowCount>0;},
+  async areFriends(name,other){const [a,b]=[name,other].sort();return (await query("SELECT a FROM room905_friends WHERE a=$1 AND b=$2 AND status='accepted'",[a,b])).rowCount>0;},
   close:()=>pool.end()
  };
 }
@@ -60,6 +64,6 @@ function installAccounts(app,{store,databaseUrl=process.env.DATABASE_URL}={}){
    res.status(404).json({error:'Unknown account action.'});
   }catch{res.status(503).json({error:'Account storage is unavailable. Guest play still works.'});}
  });
- return {lookup,close:()=>store?.close?.(),enabled:!!store};
+ return {lookup,store,close:()=>store?.close?.(),enabled:!!store};
 }
 module.exports={installAccounts,AVATARS,passwordHash,verify,tokenFrom};

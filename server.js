@@ -1,6 +1,7 @@
 'use strict';
 const express = require('express');
 const {installAccounts}=require('./accounts');
+const {installFriends}=require('./friends');
 const http = require('node:http');
 const path = require('node:path');
 const { randomInt, createHash, timingSafeEqual } = require('node:crypto');
@@ -146,8 +147,10 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   app.get('/vendor/three.module.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules/three/build/three.module.js')));
   app.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
   const accounts=installAccounts(app,{store:accountStore,databaseUrl});
+  installFriends(app,accounts,(names)=>{for(const s of io.sockets.sockets.values())if(names.includes(s.data.friendUser))s.emit('friends:changed');});
+  const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.2.0' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.3.0' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : room.players.length>=3&&i===1?'Guardian':'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
@@ -281,7 +284,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.2.0'});
+    socket.emit('build', {version:'3.3.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -346,7 +349,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       reply({ok:true});snapshot(room,now);
     });
     let lastEnter = -Infinity, lastChat = -Infinity, lastInteract = -Infinity, lastGuide = -Infinity;
-    socket.on('enter', async (data, ack) => {
+    const enterRoom=async (data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, now = performance.now();
       if (now - lastEnter < 400) return reply({ error: 'Wait a moment before trying again.' });
       lastEnter = now;
@@ -369,8 +372,38 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         if (room.phase === 'playing') return reply({ error: 'Shift in progress. Join when it ends.' });
         if (room.players.length === 4) return reply({ error: 'Room full (4/4).' });
       }
-      room.players.push({ id: socket.id, name, avatar:account?.avatar||'amber', input: {}, inputAt: 0 }); roles(room);
+      room.players.push({ id: socket.id, name, accountUsername:account?.username||null, avatar:account?.avatar||'amber', input: {}, inputAt: 0 }); roles(room);
       socket.data.code = room.code; socket.join(room.code); reply({ ok: true }); roster(room);
+    };
+    socket.on('enter',enterRoom);
+    socket.on('friends:subscribe',async(_data,ack)=>{try{const u=await accounts.lookup(socket.handshake.headers.cookie);socket.data.friendUser=u?.username||null;if(typeof ack==='function')ack({ok:!!u});}catch{if(typeof ack==='function')ack({error:'Account service unavailable.'});}});
+    let lastInvite=-Infinity;
+    socket.on('friend:invite',async(data,ack)=>{
+      const reply=typeof ack==='function'?ack:()=>{},now=Date.now();
+      if(now-lastInvite<2000)return reply({error:'Wait before sending another invitation.'});lastInvite=now;
+      try{
+       const u=await accounts.lookup(socket.handshake.headers.cookie),room=rooms.get(socket.data.code);
+       if(!u)return reply({error:'Sign in to invite friends.'});
+       if(!room||room.phase!=='lobby'||!room.players.some(p=>p.id===socket.id&&p.accountUsername===u.username))return reply({error:'Create or join a lobby first.'});
+       if(room.players.length>=4)return reply({error:'Your lobby is full.'});
+       const other=typeof data?.username==='string'?data.username.trim().toLowerCase():'';
+       if(!await accounts.store.areFriends(u.username,other))return reply({error:'Only accepted friends can be invited.'});
+       const targets=[];for(const s of io.sockets.sockets.values())if(s.data.friendUser===other){const recipient=await accounts.lookup(s.handshake.headers.cookie);if(recipient?.username===other)targets.push(s);}
+       if(!targets.length)return reply({error:'Your friend must have the game open and be signed in.'});
+       for(const [id,v]of invitations)if(v.expires<now)invitations.delete(id);
+       if(invitations.size>=2000)return reply({error:'Invite queue is full. Try later.'});
+       const id=require('node:crypto').randomUUID(),invite={id,from:u.username,to:other,code:room.code,room,expires:now+120000};invitations.set(id,invite);
+       for(const s of targets)s.emit('friend:invitation',{id,from:invite.from,code:invite.code,expires:invite.expires});reply({ok:true});
+      }catch{reply({error:'Friends service unavailable.'});}
+    });
+    socket.on('friend:join',async(data,ack)=>{
+      const reply=typeof ack==='function'?ack:()=>{};
+      try{const u=await accounts.lookup(socket.handshake.headers.cookie),invite=invitations.get(data?.id);
+       if(!u||!invite||invite.to!==u.username||invite.expires<Date.now())return reply({error:'Invitation expired or unavailable.'});
+       if(rooms.get(invite.code)!==invite.room)return reply({error:'This lobby is no longer available.'});
+       if(!await accounts.store.areFriends(u.username,invite.from))return reply({error:'This friendship is no longer active.'});
+       await enterRoom({code:invite.code,name:u.username},r=>{if(r.ok)invitations.delete(invite.id);reply(r);});
+      }catch{reply({error:'Could not join this invitation.'});}
     });
     socket.on('start', (_data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, room = rooms.get(socket.data.code);

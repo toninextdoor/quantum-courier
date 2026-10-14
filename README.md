@@ -111,3 +111,9 @@ Options beside ONLINE consolidates navigation and preferences. The footer sits a
 
 ## v3.2 Guardian
 The second player becomes Guardian in crews of three or four. F / SIGNAL PULSE pauses the Sentinel for 3 seconds within 6m and line of sight; recharge takes 12 seconds. Signal gaps remain Navigator-only. Two-player mode stays Navigator + Recovery.
+
+## v3.2.1 deployment alignment and disclosures
+The full lobby artwork block is removed. A project disclosure precedes the flipbook once per tab. Client/server mismatch blocks room entry. Verify /health reports 3.2.1 and reload all players before testing Guardian.
+
+## v3.3 Friends
+Options > Friends supports exact-username requests and mutual acceptance, then private online lobby invitations. Friend relationships persist in the existing PostgreSQL database. Invitations last two minutes and are not stored across restarts. Upload the new friends.js along with the full update; verify /health is 3.3.0. The disclosure appears each page load, and the lobby artwork block is removed.

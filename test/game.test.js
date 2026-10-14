@@ -196,6 +196,6 @@ test('Guardian role visibility and stun authority, range, cooldown and replay re
  Object.assign(a,{x:HOME.x,z:HOME.z,safeUntil:Infinity});Object.assign(g.enemy,{x:20,z:3});assert.match((await request(guard,'guardian:stun',{})).error,/6m/);assert.equal(a.stunReady,0);
  Object.assign(g.enemy,{x:HOME.x+1,z:HOME.z});assert.equal((await request(guard,'guardian:stun',{})).ok,true);assert.ok(a.stunReady>0);assert.match((await request(guard,'guardian:stun',{})).error,/recharging/);
  const before={x:g.enemy.x,z:g.enemy.z};g.devFreeze=false;await delay(180);assert.equal(g.enemy.x,before.x);assert.equal(g.enemy.z,before.z);const gs=await next(guard,'state');assert.ok(gs.enemy.stunned>0);assert.ok(gs.guardian.cooldown>10);
- g.deadline=0;await delay(100);assert.equal(room.phase,'finished');await request(nav,'start',{});assert.equal(room.game.actors[0].stunReady,0);assert.equal((await next(guard,'state')).guardian.cooldown,0);
+ g.deadline=0;await delay(100);assert.equal(room.phase,'finished');await request(nav,'start',{});assert.equal(room.game.actors[0].stunReady,0);let fresh=await next(guard,'state');while(fresh.roundId!==room.game.started)fresh=await next(guard,'state');assert.equal(fresh.guardian.cooldown,0);
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });

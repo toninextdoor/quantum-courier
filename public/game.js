@@ -1,8 +1,9 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.2.0';
+import { trolleyLayout } from '/trolley-layout.js?v=3.3.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.2.0';
+import { checkBrowser } from '/self-check.js?v=3.3.0';
 const $ = id => document.getElementById(id);
 const socket = io();
+let serverCompatible=true;
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 let lobby = null, state = null, previous = null, world = null, received = 0, yaw = 0, pitch = 0;
 let commandCamera, commandGroup, hologram, commandFocus = false;
@@ -20,7 +21,7 @@ function applyQuality(value,automatic=false){
   if(renderer){renderer.setPixelRatio(Math.min(devicePixelRatio,qualityRatios[quality]));resize();}
 }
 $('graphics').onclick=()=>{applyQuality((quality+1)%3);try{sessionStorage.setItem('room905-quality',String(quality));}catch{}};
-$('useRecommended').onclick=()=>{if($('deviceDialog').open)$('deviceDialog').close();$('devicePanel').hidden=true;$('deviceReopen').hidden=false;applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');sessionStorage.setItem('room905-device-collapsed','yes');}catch{}};
+$('useRecommended').onclick=()=>{if($('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)$('deviceDialog').close();$('devicePanel').hidden=true;$('deviceReopen').hidden=false;applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');sessionStorage.setItem('room905-device-collapsed','yes');}catch{}};
 async function runBrowserCheck(){
   if(checkRunning)return;if(state?.phase==='playing')return showError('Run the browser check between rounds.');
   checkRunning=true;$('checkAgain').disabled=true;$('deviceStatus').textContent='Checking 3D performance…';
@@ -80,6 +81,7 @@ const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.
 const mint = 0xb9f8bd, cyan = 0x64ddd4, amber = 0xfac875, red = 0xff666e;
 function showError(text = '') { $('error').textContent = text; $('error').hidden = !text; }
 function send(event, data) {
+  if(!serverCompatible)return showError('Client/server versions do not match. Deploy the full update and reload.');
   showError(); if (!socket.connected) return showError('Connection unavailable. Wait for reconnection.');
   socket.timeout(5000).emit(event, data, (err, response) => { if (err) showError('Request timed out. Check your connection.'); else if (response?.error) showError(response.error); });
 }
@@ -176,7 +178,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.2.0 · SERVER ${data.version}`; if(data.version!=='3.2.0')showError('The server is an older version. Deploy the latest commit, then reload.'); });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.3.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.3.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.3.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -543,7 +545,7 @@ function input() {
 function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
-  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e','q'].includes(key)){
     e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');if(key==='q'&&!e.repeat)socket.emit('cargo:drop');input();
   }
@@ -585,7 +587,7 @@ function frame(now) {
     setTimeout(()=>tone(155,.16,'triangle',.06+heartbeatLevel*.12,105),160);
     lastHeartbeat=now;
   }
-  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
+  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const me=state.actors.find(a=>a.id===socket.id);
   for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,pos.y||0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
@@ -620,7 +622,7 @@ function drawAvatars(){
  $('avatarPicker').replaceChildren(...avatarIds.map(id=>{const button=document.createElement('button');button.type='button';button.className='avatarOption';button.setAttribute('aria-label',`${id} avatar`);button.setAttribute('aria-pressed',String(chosenAvatar===id));const img=document.createElement('img');img.src=`/assets/avatars/${id}.svg`;img.alt='';button.append(img);button.onclick=()=>{chosenAvatar=id;drawAvatars();};return button;}));
 }
 function showAccount(user){
- accountUser=user;refreshHeaderIdentity(user);$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
+ accountUser=user;refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
  $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';
  $('profileName').textContent=user?`Signed in as ${user.username}`:'';
  $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
@@ -661,7 +663,7 @@ applyTheme(document.documentElement.dataset.theme);
 const optionsMenu=$('optionsMenu');
 document.addEventListener('click',e=>{if(!optionsMenu.contains(e.target))optionsMenu.open=false;});
 optionsMenu.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();optionsMenu.open=false;optionsMenu.querySelector('summary').focus();}});
-for(const id of ['replayBriefing','aboutButton','regularSignIn','deviceReopen'])$(id).addEventListener('click',()=>{optionsMenu.open=false;});
+for(const id of ['replayBriefing','aboutButton','regularSignIn','deviceReopen','friendsButton','disclosureInfo'])$(id).addEventListener('click',()=>{optionsMenu.open=false;});
 optionsMenu.addEventListener('toggle',()=>{if(optionsMenu.open){release();document.exitPointerLock?.();}});
 
 $('guardianPulse').onclick=()=>send('guardian:stun',{});
@@ -669,3 +671,46 @@ window.addEventListener('keydown',e=>{
  if(e.key.toLowerCase()!=='f'||e.repeat||state?.role!=='Guardian'||state.phase!=='playing'||!$('introScreen').hidden||document.querySelector('dialog[open]')||['INPUT','TEXTAREA'].includes(e.target.tagName))return;
  e.preventDefault();send('guardian:stun',{});
 });
+
+const disclosureDialog=$('disclosureDialog');
+let restoreBriefing=false;
+function dismissDisclosure(){
+ try{sessionStorage.setItem('room905-disclosure-v1','seen');}catch{}
+ disclosureDialog.close();$('introScreen').hidden=!restoreBriefing;
+ if(restoreBriefing){$('bookNext').focus();}else{document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('front').inert=false;$('game').inert=false;document.querySelector('#optionsMenu summary').focus();}
+}
+$('continueDisclosure').onclick=dismissDisclosure;
+disclosureDialog.addEventListener('cancel',e=>{e.preventDefault();dismissDisclosure();});
+let disclosureSeen=false; // Show on every page load; also available from Options.
+if(!disclosureSeen){restoreBriefing=!$('introScreen').hidden;$('introScreen').hidden=true;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('front').inert=true;$('game').inert=true;disclosureDialog.showModal();$('continueDisclosure').focus();}
+
+const pendingInvites=new Map();
+function openFriends(){release();document.exitPointerLock?.();$('friendsDialog').showModal();loadFriends();}
+$('friendsButton').onclick=$('viewInvites').onclick=openFriends;
+$('closeFriends').onclick=()=>$('friendsDialog').close();
+$('dismissInvite').onclick=()=>{$('friendInviteBanner').hidden=true;};
+$('disclosureInfo').onclick=()=>{release();document.exitPointerLock?.();restoreBriefing=false;disclosureDialog.showModal();$('continueDisclosure').focus();};
+socket.on('connect',()=>{if(accountUser)socket.emit('friends:subscribe',{});});
+socket.on('friends:changed',()=>{if($('friendsDialog').open)loadFriends();});
+socket.on('friend:invitation',invite=>{
+ if(!invite||typeof invite.id!=='string')return;
+ if(pendingInvites.size>=5)pendingInvites.delete(pendingInvites.keys().next().value);
+ pendingInvites.set(invite.id,invite);$('inviteNotice').textContent=`${invite.from} invited you to lobby ${invite.code}.`;$('friendInviteBanner').hidden=false;
+ if($('friendsDialog').open)loadFriends();
+});
+function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;row.append(image,name);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;row.append(b);}return row;}
+async function friendAction(action,username){try{const r=await fetch('/api/friends/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username})}),d=await r.json();if(!r.ok)throw Error(d.error);$('friendsStatus').textContent=action==='request'?'Friend request sent.':'Friends updated.';await loadFriends(true);}catch(e){$('friendsStatus').textContent=e.message;}}
+function inviteFriend(username){socket.timeout(5000).emit('friend:invite',{username},(err,r)=>{$('friendsStatus').textContent=err?'Invite timed out.':r.error||'Lobby invitation sent.';});}
+function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
+async function loadFriends(keepStatus=false){
+ $('friendForm').hidden=!accountUser;
+ if(!accountUser){$('friendsStatus').textContent='Sign in from Options to add friends and receive invitations.';for(const id of ['friendList','friendIncoming','friendOutgoing','friendInvites'])$(id).replaceChildren();return;}
+ try{const r=await fetch('/api/friends',{credentials:'same-origin'}),d=await r.json();if(!r.ok)throw Error(d.error);if(!keepStatus)$('friendsStatus').textContent=`${d.friends.length} friends`;
+ const lists=[['friendList',d.friends,u=>[['Invite',()=>inviteFriend(u.username)],['Remove',()=>friendAction('remove',u.username)]]],['friendIncoming',d.incoming,u=>[['Accept',()=>friendAction('accept',u.username)],['Decline',()=>friendAction('decline',u.username)]]],['friendOutgoing',d.outgoing,u=>[['Cancel',()=>friendAction('remove',u.username)]]]];
+ for(const [id,users,actions]of lists){$(id).replaceChildren(...users.map(u=>friendRow(u,actions(u))));if(!users.length)$(id).textContent='None yet.';}
+ for(const [id,v]of pendingInvites)if(v.expires<Date.now())pendingInvites.delete(id);
+ $('friendInvites').replaceChildren(...[...pendingInvites.values()].map(v=>friendRow({username:`${v.from} · ${v.code}`,avatar:'amber'},[['Join',()=>joinInvitation(v.id)],['Decline',()=>{pendingInvites.delete(v.id);loadFriends(true);}]])));if(!pendingInvites.size)$('friendInvites').textContent='No active invitations.';
+ }catch(e){$('friendsStatus').textContent=e.message;}
+}
+$('friendForm').onsubmit=e=>{e.preventDefault();friendAction('request',$('friendUsername').value);};
+setInterval(()=>{if($('friendsDialog').open&&!document.hidden)loadFriends(true);},8000);

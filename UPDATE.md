@@ -1,11 +1,11 @@
-# Room 905 v3.2.0 · Guardian
+# Room 905 v3.3.0 · Friends and deployment alignment
 
-Upload full project contents, preserving public and all assets. Render build npm ci; start npm start. Account settings stay the same.
+Upload the FULL ZIP contents to the repository root, preserving public/assets. New required file: friends.js. Commit and choose Render Manual Deploy > Deploy latest commit. Keep npm ci / npm start and your existing DATABASE_URL. The database automatically adds its friendship table without deleting accounts. After deployment, /health must report 3.3.0; reload every browser.
 
-Removed the CLASSIFIED SENSOR FEED label below the Navigator desk.
+Live diagnosis before this update: server reported 3.2.0; served HTML still contained the lobby artwork and lacked the disclosure. Those updates had not reached Render. This package removes the lobby artwork and displays a disclosure on every page load, before the flipbook. Options > Disclosure reopens it.
 
-Join-order roles: 2 players = Navigator + Recovery; 3 = Navigator + Guardian + Recovery; 4 = Navigator + Guardian + two Recovery. The Guardian explores in first person, sees the Sentinel but never receives signal-gap coordinates. Recovery crew still receive no Sentinel coordinates. Navigator retains the complete hologram.
+Options > Friends requires an account. Send an exact-username request; the recipient accepts it. Both can remove the friendship. Create/join a lobby, then invite an accepted friend. Recipient must be signed in with the game open. Invitations last two minutes, are private to the recipient, do not reserve a slot, and still enforce room capacity/phase. Leave a current crew before accepting another lobby. Offline invitations are not queued. Friends persist in PostgreSQL; live invitations are temporary and disappear on server restart.
 
-Guardian F / SIGNAL PULSE button: stun for 3 seconds, 12-second cooldown, 6m range, clear line of sight, not during respawn. Server verifies role, range, cooldown and game phase. Stunned Sentinel cannot move or cause sensor resets. Failed pulses do not consume the ability. The Guardian can carry cargo. Replay clears stun/cooldown and disconnects still return the room to its lobby.
+Friends tests verify consent, sender/recipient authorization, invitations, room joining and removal. The Guardian replay test now waits for the new round snapshot to avoid confusing a queued old snapshot with the current round.
 
-In-game help and flipbook explain the new role. Guardian uses keyboard F or the touch-friendly button. The label-removal and new bodycam UI still need visual playtesting.
+Public bio details still need to be supplied by the creator; no unseen personal details were added.
