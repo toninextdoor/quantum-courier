@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.3.0';
+import { trolleyLayout } from '/trolley-layout.js?v=3.3.2';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.3.0';
+import { checkBrowser } from '/self-check.js?v=3.3.2';
 const $ = id => document.getElementById(id);
 const socket = io();
 let serverCompatible=true;
@@ -42,11 +42,11 @@ $('deviceReopen').onclick=()=>{release();document.exitPointerLock?.();$('deviceS
 $('closeDevice').onclick=()=>$('deviceDialog').close();
 $('deviceDialog').addEventListener('close',()=>{$('devicePanel').hidden=true;$('front').prepend($('devicePanel'));try{sessionStorage.setItem('room905-device-collapsed','yes');}catch{}});
 try{if(sessionStorage.getItem('room905-device-collapsed')==='yes'){$('devicePanel').hidden=true;$('deviceReopen').hidden=false;}}catch{}
-async function dismissIntro(){ $('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();tone(660,.18,'sine',.04);setTimeout(()=>tone(880,.25,'sine',.035),180); }
+async function dismissIntro(){ document.documentElement.dataset.stage='app';$('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();tone(660,.18,'sine',.04);setTimeout(()=>tone(880,.25,'sine',.035),180); }
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
- {kicker:'02 / YOUR CREW',title:'One sees the map.<br>The others go inside.',text:'The first player is Navigator. With three or four players, the second is Guardian and the rest are Recovery crew. Two-player crews use Navigator + Recovery.',facts:['Navigator: the hologram shows hidden signal gaps, the Sentinel beacon and distant valuables. Click the floor to guide your crew.','Recovery crew: explore in first person. Nearby valuables appear within reach; hidden signals stay off your bodycam.','Guardian: sees the Sentinel, not signal gaps. Press F / SIGNAL PULSE within 6m and a clear path to pause it for 3 seconds; recharge takes 12 seconds. You can also recover cargo.','Use crew chat, quick commands, or talk together. WASD + mouse on desktop; touch arrows + swipe on mobile.'],chapter:'TWO PERSPECTIVES',art:'views'},
+ {kicker:'02 / YOUR CREW',title:'Know your role.<br>Work together.',text:'Player one is Navigator. In crews of 3–4, player two is Guardian; everyone else is Recovery. Two-player crews use Navigator + Recovery.',facts:['Navigator — see signal gaps, the Sentinel and valuables on the hologram. Click the floor to guide your crew.','Guardian — see the Sentinel, but not gaps. F / SIGNAL PULSE pauses it for 3 seconds within 6m and a clear path; recharge takes 12 seconds.','Recovery — follow command, collect valuables and return them to the trolley. WASD / touch arrows move; mouse / swipe turns your view.'],chapter:'CREW ROLES',art:'views'},
  {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Tap E / GRIP at least every 2 seconds to keep hold. Q / DROP releases it. Letting go costs 8% condition.','Walk with property: sprinting into walls costs 12% condition. Less condition means less value.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
  {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a signal beacon. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator can track the beacon and signal gaps. Follow their directions.','Signal gaps cost 5 seconds; Sentinel interference costs 10. Property is dropped and sensors reset at the hallway.','After a brief sensor reset, you reconnect at the hallway. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
 ];
@@ -68,9 +68,9 @@ function turnBook(index){
 }
 $('bookNext').onclick=()=>turnBook(bookIndex+1);$('bookPrev').onclick=()=>turnBook(bookIndex-1);
 window.addEventListener('keydown',e=>{if($('introScreen').hidden)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
-$('replayBriefing').onclick=()=>{release();document.exitPointerLock?.();turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();};
+$('replayBriefing').onclick=()=>{document.documentElement.dataset.stage='briefing';release();document.exitPointerLock?.();turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();};
 turnBook(0);
-try{if(sessionStorage.getItem('room905-flipbook')==='seen')$('introScreen').hidden=true;}catch{}
+// Startup always proceeds disclosure -> briefing -> lobby; Skip remains available.
 if(!$('introScreen').hidden){document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();}
 applyQuality(quality,qualityAuto);
 setTimeout(runBrowserCheck,0);
@@ -178,7 +178,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.3.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.3.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.3.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.3.2 · SERVER ${data.version}`; serverCompatible=data.version==='3.3.2';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.3.2, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -676,13 +676,13 @@ const disclosureDialog=$('disclosureDialog');
 let restoreBriefing=false;
 function dismissDisclosure(){
  try{sessionStorage.setItem('room905-disclosure-v1','seen');}catch{}
- disclosureDialog.close();$('introScreen').hidden=!restoreBriefing;
+ document.documentElement.dataset.stage=restoreBriefing?'briefing':'app';$('introScreen').hidden=!restoreBriefing;disclosureDialog.close();
  if(restoreBriefing){$('bookNext').focus();}else{document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('front').inert=false;$('game').inert=false;document.querySelector('#optionsMenu summary').focus();}
 }
 $('continueDisclosure').onclick=dismissDisclosure;
 disclosureDialog.addEventListener('cancel',e=>{e.preventDefault();dismissDisclosure();});
 let disclosureSeen=false; // Show on every page load; also available from Options.
-if(!disclosureSeen){restoreBriefing=!$('introScreen').hidden;$('introScreen').hidden=true;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('front').inert=true;$('game').inert=true;disclosureDialog.showModal();$('continueDisclosure').focus();}
+if(!disclosureSeen){restoreBriefing=true;document.documentElement.dataset.stage='disclosure';$('introScreen').hidden=true;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('front').inert=true;$('game').inert=true;disclosureDialog.showModal();$('continueDisclosure').focus();}
 
 const pendingInvites=new Map();
 function openFriends(){release();document.exitPointerLock?.();$('friendsDialog').showModal();loadFriends();}

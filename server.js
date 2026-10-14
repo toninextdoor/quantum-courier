@@ -150,7 +150,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   installFriends(app,accounts,(names)=>{for(const s of io.sockets.sockets.values())if(names.includes(s.data.friendUser))s.emit('friends:changed');});
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.3.0' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.3.2', build:'room905-3.3.2-startup-fix' }));
   function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : room.players.length>=3&&i===1?'Guardian':'Scavenger'; p.input = {}; p.inputAt = 0; }); }
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
@@ -284,7 +284,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.3.0'});
+    socket.emit('build', {version:'3.3.2'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;

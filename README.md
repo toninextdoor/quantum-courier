@@ -117,3 +117,9 @@ The full lobby artwork block is removed. A project disclosure precedes the flipb
 
 ## v3.3 Friends
 Options > Friends supports exact-username requests and mutual acceptance, then private online lobby invitations. Friend relationships persist in the existing PostgreSQL database. Invitations last two minutes and are not stored across restarts. Upload the new friends.js along with the full update; verify /health is 3.3.0. The disclosure appears each page load, and the lobby artwork block is removed.
+
+## v3.3.1 onboarding
+Disclosure, briefing and lobby appear in that order without a lobby flash. Shorter role explanations and internally scrolling pages keep book navigation visible on small screens.
+
+## Verified v3.3.2 package
+Use room-905-v3.3.2.zip. Its files are directly at the archive root; verify BUILD.txt and package.json before uploading. /health must report 3.3.2 and room905-3.3.2-startup-fix after deployment.
