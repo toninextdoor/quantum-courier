@@ -123,3 +123,6 @@ Disclosure, briefing and lobby appear in that order without a lobby flash. Short
 
 ## Verified v3.3.2 package
 Use room-905-v3.3.2.zip. Its files are directly at the archive root; verify BUILD.txt and package.json before uploading. /health must report 3.3.2 and room905-3.3.2-startup-fix after deployment.
+
+## v3.3.3 briefing placement
+Outer onboarding layout explicitly uses one centered column; the book retains its two-page design. Use the uniquely named room-905-v3.3.3.zip.
