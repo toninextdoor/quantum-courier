@@ -1,5 +1,5 @@
-# Room 905 v3.9.1
+# Room 905 v4.0.1
 
-Guardian pulse mobile fix: fires on touch-down independently of movement, sprint and look pointers; suppresses the follow-up synthetic click and overlapping requests. Range/timeout/success feedback stays in an absolute game-view toast, avoiding the global error banner changing the page height during touch play. Larger mobile target and no F key hint on phones. Desktop click and F controls unchanged.
+Original crew crowns: angelnextdoor and steve1234 receive a silver-blue OG DEV crown. toninextdoor receives an exclusive gold crown with amethyst gem, creator halo and FOUNDER label. Crowns display above authenticated avatars in the header, lobby, profile and friends, and above field-player characters in 3D. Guest callsigns never grant a crown; server-authenticated account identity determines the badge. These cosmetics confer no gameplay advantage or developer-console access.
 
-Upload full contents preserving folders; no Render environment changes. /health should show 3.9.1. Physical phone playtesting remains needed.
+Upload full contents preserving folders. No new settings or database migrations. /health shows 4.0.1. Visual playtest pending.

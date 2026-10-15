@@ -1,8 +1,9 @@
 'use strict';
+const {heritage}=require('./progression');
 function installFriends(app,accounts,notify=()=>{},getOnline=async()=>new Set()){
  const limits=new Map();
  app.use('/api/friends',require('express').json({limit:'2kb'}));
- app.get('/api/friends',async(req,res)=>{try{const u=await accounts.lookup(req.headers.cookie);if(!u)return res.status(401).json({error:'Sign in to use Friends.'});const rows=await accounts.store.friendList(u.username);const online=await getOnline(rows.filter(r=>r.status==='accepted').map(r=>r.username));const safe=r=>({username:r.username,avatar:r.avatar,...(r.status==='accepted'?{online:online.has(r.username)}:{})});res.json({friends:rows.filter(r=>r.status==='accepted').map(safe),incoming:rows.filter(r=>r.status==='pending'&&r.requester!==u.username).map(safe),outgoing:rows.filter(r=>r.status==='pending'&&r.requester===u.username).map(safe)});}catch{res.status(503).json({error:'Friends service unavailable.'});}});
+ app.get('/api/friends',async(req,res)=>{try{const u=await accounts.lookup(req.headers.cookie);if(!u)return res.status(401).json({error:'Sign in to use Friends.'});const rows=await accounts.store.friendList(u.username);const online=await getOnline(rows.filter(r=>r.status==='accepted').map(r=>r.username));const safe=r=>({username:r.username,avatar:r.avatar,heritage:heritage(r.username),...(r.status==='accepted'?{online:online.has(r.username)}:{})});res.json({friends:rows.filter(r=>r.status==='accepted').map(safe),incoming:rows.filter(r=>r.status==='pending'&&r.requester!==u.username).map(safe),outgoing:rows.filter(r=>r.status==='pending'&&r.requester===u.username).map(safe)});}catch{res.status(503).json({error:'Friends service unavailable.'});}});
  app.post('/api/friends/:action',async(req,res)=>{try{
  if(req.get('origin')!==`${req.protocol}://${req.get('host')}`)return res.status(403).json({error:'Invalid request origin.'});
  const u=await accounts.lookup(req.headers.cookie);if(!u)return res.status(401).json({error:'Sign in first.'});

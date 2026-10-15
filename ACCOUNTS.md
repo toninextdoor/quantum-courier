@@ -14,7 +14,7 @@ No database URL: registration is clearly marked as awaiting setup, and guest mul
 For local accounts, point DATABASE_URL at your own local PostgreSQL instance. For remote external connections, use the provider's documented TLS connection parameters and certificate requirements. Do not disable TLS certificate verification.
 
 ## Security and data
-Passwords use asynchronous scrypt with independent random salts; plaintext passwords are never stored. Sessions use random 256-bit tokens in HttpOnly, SameSite=Strict cookies; only token hashes are stored in the database. HTTPS deployments set Secure cookies. State-changing account requests require the application's exact Origin. Account endpoints have request and expensive-hash concurrency limits. Database queries are parameterized. Normal accounts never grant access to the developer console.
+Passwords use asynchronous scrypt with independent random salts; plaintext passwords are never stored. Sessions use random 256-bit tokens in HttpOnly, SameSite=Lax cookies; only token hashes are stored in the database. HTTPS deployments set Secure cookies. State-changing account requests require the application's exact Origin. Account endpoints have request and expensive-hash concurrency limits. Database queries are parameterized. Normal accounts never grant access to the developer console.
 
 Account data: username, password hash, chosen badge, creation timestamp, session hash and expiration timestamp. Public players see only a username/callsign and avatar. Account deletion cascades to saved sessions; it does not retract previously displayed crew messages. No email is collected, so there is no forgotten-password recovery. Explain this to players before they register. Back up your database according to your provider's policy.
 
@@ -34,3 +34,12 @@ The existing DATABASE_URL is used for the new room905_friends table, added autom
 New accounts receive one random 192-bit recovery code, displayed for saving. Existing accounts can generate/replace one from Profile using their current password. Only a SHA-256 hash is stored in the new recovery_hash column, added automatically. Forgot password accepts the username, saved code and a confirmed new password, clears the code and revokes all stored sessions atomically. Sign in normally afterward and generate a replacement recovery code. There is no email verification/recovery; if neither password nor saved code is available, the system cannot prove account ownership. Username, callsign, school information or a claimed identity are not sufficient recovery evidence. Codes must be saved privately, not shared in screenshots or room chat.
 
 For future email recovery, use verified email ownership and a transactional email provider over HTTPS with expiring single-use reset links, rate limits and session invalidation. Do not use security questions or reset solely based on a username. Reference: https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html
+
+
+## v4.0 sessions and progression
+
+Thirty-day HttpOnly SameSite=Lax sessions renew on account GET; the same browser must retain site cookies. Opening another browser/private window or clearing site data requires login. Passwords and session tokens are never stored in localStorage. Mobile resume reloads account state and temporary storage failures retry three times without clearing the last known profile. Existing valid sessions renew; already-expired sessions require one fresh login.
+
+Postgres automatically adds xp, frame and title fields and a unique per-round award ledger. A completed eligible team shift earns 50 base XP, up to 150 cargo XP, and 100 bonus XP on success. Shifts shorter than 30 seconds and developer-controlled rounds do not award XP. All signed-in roles earn equally, capped at level 20 (4750 XP); every 250 XP advances a level. Frames and titles are cosmetic only and are checked on the server when equipping.
+
+The exact normalized usernames toninextdoor, angelnextdoor and steve1234 are max-progression testing profiles. Existing passwords are preserved. Missing accounts must be registered normally; the code does not precreate accounts with passwords. Max progression never grants developer-console access. Remove names from progression.js TEST_USERS and the migration UPDATE when retiring testing profiles.

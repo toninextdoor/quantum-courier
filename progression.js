@@ -1,0 +1,7 @@
+'use strict';
+const MAX_XP=4750,TEST_USERS=new Set(['toninextdoor','angelnextdoor','steve1234']);
+const REWARDS=[{id:'rookie',kind:'title',name:'New Arrival',level:1},{id:'scout',kind:'title',name:'Night Scout',level:3},{id:'mint',kind:'frame',name:'Mint Circuit',level:5},{id:'specialist',kind:'title',name:'Recovery Specialist',level:7},{id:'blue',kind:'frame',name:'Lakeshore Blue',level:10},{id:'violet',kind:'frame',name:'After Hours',level:15},{id:'veteran',kind:'title',name:'905 Veteran',level:15},{id:'gold',kind:'frame',name:'Penthouse Gold',level:20},{id:'master',kind:'title',name:'Master of 905',level:20}];
+function heritage(username){return username==='toninextdoor'?{kind:'founder',label:'FOUNDER',detail:'Original creator · Room 905'}:TEST_USERS.has(username)?{kind:'og',label:'OG DEV',detail:'Original development crew'}:null;}
+function progression(u={}){const testing=TEST_USERS.has(u.username),xp=testing?MAX_XP:Math.max(0,Math.min(MAX_XP,Number(u.xp)||0)),level=Math.min(20,1+Math.floor(xp/250));return {xp,level,maxLevel:20,testing,heritage:heritage(u.username),current:level===20?250:xp%250,required:250,title:u.title||'rookie',frame:u.frame||'standard',rewards:REWARDS.map(r=>({...r,unlocked:level>=r.level}))};}
+function rewardXP(g){return g.elapsed>=30?50+Math.min(150,Math.floor(g.score/10))+(g.outcome==='won'?100:0):0;}
+module.exports={heritage,progression,rewardXP,REWARDS,MAX_XP,TEST_USERS};

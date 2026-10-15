@@ -24,7 +24,7 @@ An optional four-platform route changes direction and position between rounds. U
 - The first player is the Navigator. Everyone else is a Scavenger (up to three).
 - Extract $600 worth of valuables within 3 minutes to win.
 - Navigator: the mission-command trailer contains a real miniature 3D hotel suite hologram showing crew, valuables, invisible breaches and the Sentinel. FOCUS HOLOGRAM switches to a closer perspective; WIDE TRAILER VIEW returns to the desk. Click an open tile on the hologram to place a 12-second waypoint. Quick commands last 4.5 seconds and describe movements relative to the Scavenger's view.
-- Scavenger: the bodycam cannot detect breaches or the Sentinel, cargo appears only within grabbing range (1.8m), and fog limits distant visibility. Depend on the Navigator for safe routing, warnings and target locations. Ordinary walls remain visible for basic movement. WASD moves. Mouse capture or left/right arrows turn your view. E grabs the nearest available valuable within 1.8m; Keep tapping E at least every 2 seconds to refresh grip; Q drops it. On mobile, use touch arrows, swipe the scene to look, and tap GRAB / GRIP and use DROP to release it. Carry valuable objects into the green extraction pad to deposit automatically.
+- Scavenger: the bodycam cannot detect breaches or the Sentinel, cargo appears only within grabbing range (1.8m), and fog limits distant visibility. Depend on the Navigator for safe routing, warnings and target locations. Ordinary walls remain visible for basic movement. WASD moves. Mouse capture or left/right arrows turn your view. E grabs the nearest available valuable within 1.8m; Keep tapping E at least every 2 seconds to refresh grip; Q drops it. On mobile, use the analog joystick, swipe the scene to look, and tap GRAB / GRIP and use DROP to release it. Carry valuable objects into the green extraction pad to deposit automatically.
 - Hold Shift or RUN to sprint. Cargo slows you down. Sprinting into walls damages cargo by 12 condition points (at most once per 1.1 seconds). Dropping damages it by 8 points. Sale value is rounded base value × condition / 100. Condition cannot fall below 10%.
 - Breaches appear only on the Navigator hologram. They return you to extraction, subtract 5 seconds, drop held cargo, and damage it by 20 condition points.
 - The Sentinel is invisible to Scavengers and has no position marker; proximity produces a red tint and heartbeat. Only the Navigator can track it. It patrols through actual doorways. It can spot players within 7.5m with unobstructed sight, or hear unloaded sprinting players within 10m. A signal interruption returns you to extraction, subtracts 10 seconds, drops cargo and damages it by 35 condition points. Extraction is safe; respawns have 3 seconds of protection.
@@ -35,7 +35,7 @@ An optional four-platform route changes direction and position between rounds. U
 
 | Action | Desktop | Mobile |
 | --- | --- | --- |
-| Move | WASD; up/down arrows also move | Direction buttons |
+| Move | WASD; up/down arrows also move | Analog joystick |
 | Look | Click Enter first-person view, then mouse; or left/right arrows | Swipe the 3D view |
 | Grab / refresh grip | E (tap every 2 seconds) | GRAB / GRIP |
 | Drop deliberately | Q | DROP |
@@ -60,7 +60,7 @@ npm test
 
 The tests use six real Socket.io clients to check room codes, capacity, role assignment, host permissions, snapshot visibility, input authority, stale-input expiry, guidance restrictions, pickup/drop, damage, extraction values, breach/catch penalties, win/loss, replay, disconnect cleanup and asset serving. Navigation tests verify a walkable path from extraction to every valuable and wall sight blocking.
 
-Development browser checks also passed with three Chromium clients, including a 390px touch viewport: WebGL, both asymmetric views, map waypoint clicks, commands, chat, mouse capture, keyboard and touch movement, pickup, extraction, loss results, replay and no horizontal mobile overflow. Physical-device/network playtesting is still needed to tune difficulty and confirm performance on your users' devices.
+Current v4.0 checks: 26 automated tests cover multiplayer rules, account sessions and restoration with a test store, XP persistence/deduplication, gated cosmetics and joystick release/cancellation. The current phone layout and live PostgreSQL migration still require deployment and physical-device testing.
 
 Additional v2.2 checks cover 200 reproducible seeds with 200 distinct wall layouts, safe floor-cargo access, patrol reachability, and an integration test that jumps up every platform using actual movement inputs, lands, retrieves premium cargo, extracts it, and verifies a new map on replay.
 
@@ -84,7 +84,7 @@ Audio debugging: local console tests play on the developer device, including Nav
 
 ## Intro and browser readiness (v2.6)
 
-A skippable four-page illustrated hotel field guide appears once per tab session. Next/Back, page dots, keyboard arrows and Escape provide navigation. Enter on the last page or Skip dismisses it and unlocks synthesized elevator-chime audio. HOW TO PLAY reopens it. The same-time local readiness check renders a sample scene, estimates FPS at progressively lower pixel densities, and recommends Normal, Low or Minimal. No performance results or hardware identifiers are uploaded. WebGL failure blocks room creation/join until a successful rerun. RUN CHECK works between rounds, USE RECOMMENDED restores automatic mode, and the graphics button cycles manual settings. Automatic mode can lower quality after sustained low frame rate; manual choices remain under the player’s control. The check is an estimate and is not a substitute for actual multiplayer playtesting.
+A skippable four-page illustrated hotel field guide appears after disclosure at startup. Next/Back, page dots, keyboard arrows and Escape provide navigation. Enter on the last page or Skip dismisses it and unlocks synthesized elevator-chime audio. HOW TO PLAY reopens it. The same-time local readiness check renders a sample scene, estimates FPS at progressively lower pixel densities, and recommends Normal, Low or Minimal. No performance results or hardware identifiers are uploaded. WebGL failure blocks room creation/join until a successful rerun. RUN CHECK works between rounds, USE RECOMMENDED restores automatic mode, and the graphics button cycles manual settings. Automatic mode can lower quality after sustained low frame rate; manual choices remain under the player’s control. The check is an estimate and is not a substitute for actual multiplayer playtesting.
 
 Hotel staff have authorized recovery of abandoned property. The Sentinel is an abstract signal beacon; encounters cause sensor resets, timer and property-condition penalties, never injury or attacks.
 
@@ -138,3 +138,5 @@ Failed premium parkour descents respawn the same damaged artifact. Recovery code
 
 ## v3.7 chosen roles
 Select a role before entry. Slots are reserved on the server; unavailable roles produce a clear error. Interactive lobby cards show avatars, names, roles, host/self markers and vacancies. Roles can change before launch and persist through replay. Host and Navigator are independent.
+
+See UPDATE.md for v4.0 progression, joystick and testing-profile details.

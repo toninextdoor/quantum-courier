@@ -1,6 +1,7 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.9.1';
+import {bindJoystick} from '/joystick.mjs?v=4.0.1';
+import { trolleyLayout } from '/trolley-layout.js?v=4.0.1';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.9.1';
+import { checkBrowser } from '/self-check.js?v=4.0.1';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -13,6 +14,7 @@ let trolleyCargoGroup, trolleyKey='';
 let items = new Map(), actors = new Map(), currentRound = null;
 let lastFrame = performance.now(), lastSound = 0, lastEvent = -1, lastCue = '';
 const keys = new Set(), touches = new Map();
+let movementStick=null,stickX=0,stickZ=0;
 let jumpUntil = 0, cargoListKey = '', lastRender = 0;
 const qualityNames=['NORMAL','LOW','MINIMAL'],qualityRatios=[1,.65,.45];
 let quality=0,qualityAuto=true,recommendedQuality=0,checkRunning=false;
@@ -179,7 +181,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.9.1 · SERVER ${data.version}`; serverCompatible=data.version==='3.9.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.9.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.0.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.0.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.0.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -194,7 +196,7 @@ socket.on('lobby', data => {
     const name=document.createElement('strong');name.textContent=player?player.name:'Available';
     const roleLabel=document.createElement('span');roleLabel.className='crewRole';roleLabel.textContent=roleNames[role]+(role==='Scavenger'?` ${index+1}`:'');
     const note=document.createElement('small');note.textContent=player?[player.id===socket.id?'YOU':'',player.id===data.host?'HOST':''].filter(Boolean).join(' · ')||'RESERVED':roleHints[role];
-    li.append(badge,roleLabel,name,note);
+    li.append(crownedAvatar(badge,player?.progression?.heritage),roleLabel,name,note);if(player?.progression?.heritage)li.append(heritageLabel(player.progression.heritage));if(player?.progression){badge.dataset.frame=player.progression.frame;const rank=document.createElement('small');rank.textContent=`${player.progression.testing?'TEST · ':''}LV ${player.progression.level} · ${player.progression.rewards.find(r=>r.id===player.progression.title)?.name||'New Arrival'}`;li.append(rank);}
     if(player?.id===socket.id)li.classList.add('yourCard');
     if(!player){li.classList.add('openSlot');const button=document.createElement('button');button.className='ghost';button.textContent='Take this role';button.onclick=()=>send('lobby:role',{role});li.append(button);}
     return li;
@@ -285,6 +287,7 @@ socket.on('state', data => {
     $('resultTitle').textContent = data.outcome === 'won' ? 'You made it out.' : 'Room 905 keeps its secrets.';
     $('resultSubtitle').textContent = data.outcome === 'won' ? 'Quota secured. Trust, timing, and a little nerve.' : 'Try the nearby valuables first. Walk with cargo; use the Navigator’s waypoints.';
     $('resultScore').textContent = `$${data.score} / $${data.quota}`; $('resultDeliveries').textContent = data.deliveries;
+    if(previous?.phase!=='finished')$('resultXP').textContent=accountUser?(data.xpAward?`+${data.xpAward} XP · saving to your profile`:'No XP this shift · play at least 30 seconds; developer-controlled rounds do not earn XP.'):'Sign in to save XP and unlock cosmetics.';
     $('resultDamage').textContent = `$${data.damage}`; $('resultCatches').textContent = data.catches;
     $('again').hidden = lobby?.host !== socket.id; $('replayHelp').textContent = lobby?.host === socket.id ? 'Same crew. Fresh cargo. Ready when you are.' : 'Waiting for the host to launch another shift.';
   }
@@ -505,11 +508,18 @@ function updateTrolley(){
   trolleyCargoGroup.userData.fill=Math.min(1,state.score/state.quota);
 }
 const avatarColors={amber:0xe3b775,mint:0x78c6aa,violet:0xa493d2,rose:0xd18d9b,blue:0x80afd1,silver:0xc2c6cd};
-function makeActor(name, nav,avatar='amber') {
+function makeActor(name, nav,avatar='amber',heritage=null) {
   const g=new THREE.Group(), suit=material(avatarColors[avatar]||avatarColors.amber,{metalness:.25}), dark=material(0x21323d), visor=material(cyan,{emissive:cyan,emissiveIntensity:.8});
   cylinder(g,.25,.3,.48,0,.65,0,suit);sphere(g,.32,0,1.07,0,suit);box(g,.42,.14,.1,0,1.1,-.28,visor);
   for(const x of [-.2,.2]){box(g,.14,.35,.16,x,.23,0,dark);sphere(g,.1,x*1.8,.65,0,dark);}
   box(g,.23,.35,.2,0,.65,.3,dark);cylinder(g,.02,.02,.3,.17,1.45,0,dark);sphere(g,.045,.17,1.61,0,visor);
+  if(heritage){
+    const crown=new THREE.Group(),gold=material(heritage.kind==='founder'?0xf1cb6e:0xc7d9e4,{metalness:.8,roughness:.25}),gem=new THREE.MeshBasicMaterial({color:heritage.kind==='founder'?0xc781da:0x78c6cc});
+    const band=new THREE.Mesh(new THREE.TorusGeometry(.28,.035,6,16),gold);band.rotation.x=Math.PI/2;crown.add(band);
+    for(let i=0;i<5;i++){const a=i/5*Math.PI*2;const tip=new THREE.Mesh(new THREE.ConeGeometry(.065,heritage.kind==='founder'?.2:.14,4),gold);tip.position.set(Math.cos(a)*.25,.08,Math.sin(a)*.25);crown.add(tip);}
+    sphere(crown,.055,0,.09,-.29,gem);crown.position.y=1.5;g.add(crown);
+    if(heritage.kind==='founder'){const halo=new THREE.Mesh(new THREE.TorusGeometry(.38,.012,6,24),gem);halo.rotation.x=Math.PI/2;halo.position.y=1.47;g.add(halo);}
+  }
   const label=textSprite(name,'#64ddd4',nav?3:1.25,!nav);label.position.set(0,1.9,0);g.add(label);
   if(nav){ring(g,.48,cyan,0,0,.04);const arrow=new THREE.Mesh(new THREE.ConeGeometry(.16,.45,3),new THREE.MeshBasicMaterial({color:cyan}));arrow.rotation.x=-Math.PI/2;arrow.position.set(0,.03,-.7);g.add(arrow);}
   return g;
@@ -543,7 +553,7 @@ function updateEntities(nav) {
     const value=Math.round(item.value*item.condition/100);
     if(nav&&value!==mesh.userData.labelValue){mesh.remove(mesh.userData.valueLabel);disposeGroup(mesh.userData.valueLabel);const label=textSprite(`$${value}`,'#fac875',2.6,false);label.position.y=1.25;mesh.add(label);mesh.userData.valueLabel=label;mesh.userData.labelValue=value;}
   }
-  for(const a of state.actors){if(!actors.has(a.id)){const mesh=makeActor(a.name,nav,a.avatar);actors.set(a.id,mesh);actorGroup.add(mesh);}actors.get(a.id).visible=nav||a.id!==socket.id;}
+  for(const a of state.actors){if(!actors.has(a.id)){const mesh=makeActor(a.name,nav,a.avatar,a.heritage);actors.set(a.id,mesh);actorGroup.add(mesh);}actors.get(a.id).visible=nav||a.id!==socket.id;}
   const cargo=state.items.find(i=>i.carrier===socket.id);
   if(carryGroup.userData.id!==cargo?.id){
     while(carryGroup.children.length){const child=carryGroup.children[0];carryGroup.remove(child);disposeGroup(child);}
@@ -569,10 +579,10 @@ function canTouchPlay(){return state?.phase==='playing'&&state.role!=='Navigator
 function input() {
   if(!state||state.role==='Navigator'||!$('introScreen').hidden||state.respawn||state.phase!=='playing'||!socket.connected)return;
   const held=new Set([...keys].map(k=>mapping[k]).concat([...touches.values()]));
-  socket.emit('input',{forward:Number(held.has('forward'))-Number(held.has('back')),strafe:Number(held.has('right'))-Number(held.has('left')),yaw,jump:held.has('jump')||performance.now()<jumpUntil,sprint:held.has('sprint')});
+  socket.emit('input',{forward:Math.max(-1,Math.min(1,stickZ+Number(held.has('forward'))-Number(held.has('back')))),strafe:Math.max(-1,Math.min(1,stickX+Number(held.has('right'))-Number(held.has('left')))),yaw,jump:held.has('jump')||performance.now()<jumpUntil,sprint:held.has('sprint')});
   document.querySelectorAll('[data-move]').forEach(b=>{const active=held.has(b.dataset.move);b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
 }
-function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false');});}
+function release(){movementStick?.release();stickX=stickZ=0;jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false');});}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
   if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
@@ -600,6 +610,7 @@ for(const type of ['contextmenu','selectstart','dragstart'])$('viewport').addEve
 $('viewport').addEventListener('dblclick',e=>{if(touchDevice)e.preventDefault();});
 window.addEventListener('orientationchange',release);
 new MutationObserver(()=>{if(document.querySelector('dialog[open]'))release();}).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});
+movementStick=bindJoystick($('moveStick'),$('stickKnob'),{enabled:canTouchPlay,change:(x,z)=>{stickX=x;stickZ=z;input();}});
 setInterval(input,50);
 function interpolate(now,current,old) {
   if(!old||Math.hypot(current.x-old.x,current.z-old.z)>2)return current;
@@ -655,24 +666,26 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Account cookies are HttpOnly; the browser never stores a session token in JavaScript.
+let accountLoading=false,accountRetry=0,accountEpoch=0;
 let accountUser=null,accountEnabled=false,chosenAvatar='amber',accountBusy=false;
 const avatarIds=['amber','mint','violet','rose','blue','silver'];
 function drawAvatars(){
  $('avatarPicker').replaceChildren(...avatarIds.map(id=>{const button=document.createElement('button');button.type='button';button.className='avatarOption';button.setAttribute('aria-label',`${id} avatar`);button.setAttribute('aria-pressed',String(chosenAvatar===id));const img=document.createElement('img');img.src=`/assets/avatars/${id}.svg`;img.alt='';button.append(img);button.onclick=()=>{chosenAvatar=id;drawAvatars();};return button;}));
 }
 function showAccount(user){
- accountUser=user;refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
+ accountUser=user;renderProgression(user);refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
  $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';
  $('profileName').textContent=user?`Signed in as ${user.username}`:'';
  $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
  drawAvatars();
 }
 async function loadAccount(){
- try{const response=await fetch('/api/account',{credentials:'same-origin'}),data=await response.json();if(!response.ok)throw Error(data.error);accountEnabled=data.enabled;showAccount(data.user);$('accountStatus').textContent=data.enabled?(data.user?'Avatar changes apply the next time you join a crew.':'Sign in or choose a badge and create an account.'):'Accounts are awaiting database setup. Guest play is ready.';$('accountLogin').disabled=$('accountRegister').disabled=!data.enabled;}
- catch(e){$('accountStatus').textContent=e.message;}
+ if(accountLoading||accountBusy)return;accountLoading=true;const epoch=accountEpoch;
+ try{const response=await fetch('/api/account',{credentials:'same-origin',cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error);if(epoch!==accountEpoch)return;accountRetry=0;accountEnabled=data.enabled;showAccount(data.user);$('accountStatus').textContent=data.enabled?(data.user?'Avatar changes apply the next time you join a crew.':'Sign in or choose a badge and create an account.'):'Accounts are awaiting database setup. Guest play is ready.';$('accountLogin').disabled=$('accountRegister').disabled=!data.enabled;}
+ catch(e){$('accountStatus').textContent=e.message;if(accountRetry<3){accountRetry++;setTimeout(loadAccount,accountRetry*1500);}}finally{accountLoading=false;}
 }
 async function accountAction(action,body={}){
- if(accountBusy)return;if(lobby){$('accountStatus').textContent='Leave your crew before changing your account or avatar.';return;}accountBusy=true;$('accountStatus').textContent='Saving…';
+ if(accountBusy)return;if(lobby){$('accountStatus').textContent='Leave your crew before changing your account or avatar.';return;}accountBusy=true;accountEpoch++;$('accountStatus').textContent='Saving…';
  try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});socket.disconnect();socket.connect();}
  catch(e){$('accountStatus').textContent=e.message;}finally{accountBusy=false;}
 }
@@ -683,10 +696,13 @@ $('saveAvatar').onclick=()=>accountAction('avatar',{avatar:chosenAvatar});
 $('accountLogout').onclick=()=>accountAction('logout');
 $('deleteAccount').onclick=()=>accountAction('delete',{password:$('deletePass').value});
 loadAccount();
+window.addEventListener('pageshow',()=>loadAccount());
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadAccount();});
+socket.on('progression:update',data=>{if(data.user)showAccount(data.user);$('resultXP').textContent=data.error||`+${data.earned} XP saved · level ${data.user?.progression.level||accountUser?.progression.level||1}`;});
 
 function refreshHeaderIdentity(user=accountUser){
  $('headerUsername').textContent=user?.username||$('name').value.trim()||'Guest';
- $('guestFace').hidden=!!user;$('headerAvatar').hidden=!user;
+ $('guestFace').hidden=!!user;$('headerAvatar').hidden=!user;$('headerPortrait').hidden=!user;const h=user?.progression?.heritage;setCrown($('headerCrown'),h);$('headerPortrait').dataset.heritage=h?.kind||'';$('headerHeritage').hidden=!h;$('headerHeritage').textContent=h?.label||'';$('headerHeritage').dataset.heritage=h?.kind||'';$('headerHeritage').title=h?.detail||'';
  if(user)$('headerAvatar').src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;
 }
 $('name').addEventListener('input',()=>refreshHeaderIdentity());
@@ -761,7 +777,7 @@ socket.on('friend:invitation',invite=>{
  pendingInvites.set(invite.id,invite);$('inviteNotice').textContent=`${invite.from} invited you to lobby ${invite.code}.`;$('friendInviteBanner').hidden=false;
  if($('friendsDialog').open)loadFriends();
 });
-function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;const identity=document.createElement('div');identity.className='friendIdentity';identity.append(name);if(typeof user.online==='boolean'){const status=document.createElement('span');status.className=user.online?'presence online':'presence offline';status.textContent=user.online?'Online':'Offline';identity.append(status);}row.append(image,identity);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;if(label==='Invite'&&user.online===false){b.disabled=true;b.title='Your friend needs the game open.';}row.append(b);}return row;}
+function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;const identity=document.createElement('div');identity.className='friendIdentity';identity.append(name);if(user.heritage)identity.append(heritageLabel(user.heritage));if(typeof user.online==='boolean'){const status=document.createElement('span');status.className=user.online?'presence online':'presence offline';status.textContent=user.online?'Online':'Offline';identity.append(status);}row.append(crownedAvatar(image,user.heritage),identity);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;if(label==='Invite'&&user.online===false){b.disabled=true;b.title='Your friend needs the game open.';}row.append(b);}return row;}
 async function friendAction(action,username){try{const r=await fetch('/api/friends/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username})}),d=await r.json();if(!r.ok)throw Error(d.error);$('friendsStatus').textContent=action==='request'?'Friend request sent.':'Friends updated.';await loadFriends(true);}catch(e){$('friendsStatus').textContent=e.message;}}
 function inviteFriend(username){socket.timeout(5000).emit('friend:invite',{username},(err,r)=>{$('friendsStatus').textContent=err?'Invite timed out.':r.error||'Lobby invitation sent.';});}
 function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
@@ -799,3 +815,16 @@ $('hideRecovery').onclick=()=>{$('recoveryCodeValue').textContent='';$('recovery
 
 document.querySelectorAll('[data-role-choice]').forEach(button=>button.onclick=()=>{selectedEntryRole=button.dataset.roleChoice;document.querySelectorAll('[data-role-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));});
 $('changeRole').onclick=()=>send('lobby:role',{role:$('lobbyRole').value});
+
+function renderProgression(user){
+ const p=user?.progression;$('headerLevel').hidden=!p;if(!p)return;
+ $('levelLabel').textContent=`LV ${p.level} / ${p.maxLevel}`;$('levelFill').style.width=(p.current/p.required*100)+'%';$('profileXP').style.width=(p.current/p.required*100)+'%';
+ const h=p.heritage;const portrait=document.createElement('img');portrait.src=`/assets/avatars/${user.avatar}.svg`;portrait.alt='Your profile avatar';portrait.width=64;portrait.height=64;portrait.dataset.frame=p.frame;$('profileEmblem').replaceChildren(crownedAvatar(portrait,h));if(h)$('profileEmblem').append(heritageLabel(h));
+ $('progressionTitle').textContent=`Level ${p.level}${p.testing?' · TEST PROFILE':''}`;$('xpDetails').textContent=p.level===p.maxLevel?`${p.xp} XP · Maximum level`:`${p.xp} total XP · ${p.current} / ${p.required} to next level`;
+ $('headerAvatar').dataset.frame=p.frame;
+ $('unlockList').replaceChildren(...p.rewards.map(r=>{const row=document.createElement('div');row.className='unlockRow';const text=document.createElement('span');text.textContent=`${r.name} · ${r.kind} · LV ${r.level}`;const b=document.createElement('button');b.className='secondary';const equipped=p[r.kind]===r.id;b.textContent=equipped?'Equipped':r.unlocked?'Equip':'Locked';b.disabled=!r.unlocked||equipped;b.onclick=()=>accountAction('equip',{kind:r.kind,id:r.id});row.append(text,b);return row;}));
+}
+
+function setCrown(icon,h){icon.hidden=!h;icon.dataset.heritage=h?.kind||'';icon.setAttribute('role','img');icon.setAttribute('aria-label',h?`${h.label} crown`:'');icon.title=h?.detail||'';}
+function crownedAvatar(image,h){const wrap=document.createElement('span');wrap.className='crownedAvatar';wrap.dataset.heritage=h?.kind||'';wrap.append(image);if(h){const crown=document.createElement('span');crown.className='crownIcon';setCrown(crown,h);wrap.append(crown);}return wrap;}
+function heritageLabel(h){const badge=document.createElement('span');badge.className='heritageTag';badge.dataset.heritage=h.kind;badge.textContent=h.label;badge.title=h.detail;return badge;}

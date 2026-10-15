@@ -1,11 +1,12 @@
 'use strict';
 const express = require('express');
 const {installAccounts}=require('./accounts');
+const {rewardXP}=require('./progression');
 const {installFriends}=require('./friends');
 const {moderateChat}=require('./moderation');
 const http = require('node:http');
 const path = require('node:path');
-const { randomInt, createHash, timingSafeEqual } = require('node:crypto');
+const { randomUUID, randomInt, createHash, timingSafeEqual } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const { Server } = require('socket.io');
 const W = 28, H = 24, DT = 0.05, ROUND = 180000, QUOTA = 600, RADIUS = 0.28;
@@ -129,10 +130,10 @@ function resolvePlatformOverlap(a,map) {
 }
 function freshGame(players, now, map = generateMap(),difficulty='normal') {
   return {
-    map,
+    map, awardId:randomUUID(),
     difficulty, settings:DIFFICULTIES[difficulty],
     started: now, deadline: now + DIFFICULTIES[difficulty].seconds*1000, elapsed: 0, score: 0, deliveries: 0, catches: 0, damage: 0,
-    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, role:p.role, stunReady:0, health:100, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
+    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, role:p.role, heritage:p.progression?.heritage||null, stunReady:0, health:100, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
     items: map.items.map(i=>({...i})),
     enemy: { ...map.patrol[0], yaw: 0, mode: 'patrol', target: null, patrol: 0, path: [], recalc: 0 },
     ping: null, cue: null, eventId: 0, event: 'Room 905 is open. Recover authorized property and bring them back to the green hallway extraction pad.', outcome: null
@@ -157,12 +158,12 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.9.1', build:'room905-3.9.1-startup-fix' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.0.1', build:'room905-4.0.1-startup-fix' }));
   const ROLE_LIMITS={Navigator:1,Guardian:1,Scavenger:2};
   const roleAvailable=(room,role,except)=>Object.hasOwn(ROLE_LIMITS,role)&&room.players.filter(p=>p.id!==except&&p.role===role).length<ROLE_LIMITS[role];
   function roles(room){for(const p of room.players){p.input={};p.inputAt=0;}}
   function roster(room) {
-    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, difficulty:room.difficulty||'normal', phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
+    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, difficulty:room.difficulty||'normal', phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar,progression }) => ({ id, name, role, avatar,progression })) });
   }
   function event(g, text, kind = 'info') { g.eventId++; g.event = text; g.eventKind = kind; }
   function cargoDamage(g, item, amount) {
@@ -194,8 +195,14 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     event(g, `${a.name}: ${cause === 'sentinel' ? 'Sentinel interference' : 'EM Flux Fault'} · suit integrity depleted. −${cause==='sentinel'?g.settings.sentinel:g.settings.gap}s. Cargo dropped; returning to extraction.`, 'danger');
   }
   function finish(room, outcome) {
+    if(room.phase==='finished')return;
     room.phase = 'finished'; room.game.outcome = outcome; room.game.finalRemaining = Math.max(0, (room.game.deadline - performance.now()) / 1000);
     event(room.game, outcome === 'won' ? 'QUOTA SECURED. Extraction complete.' : 'SHIFT CLOSED. Quota missed.', outcome === 'won' ? 'success' : 'danger');
+    const g=room.game,amount=g.devUsed?0:rewardXP(g);g.xpAward=amount;
+    if(amount&&accounts.store?.award)for(const name of new Set(room.players.map(p=>p.accountUsername).filter(Boolean))){
+      accounts.store.award(name,g.awardId,amount).then(user=>{for(const p of room.players.filter(p=>p.accountUsername===name)){if(user)p.progression=accounts.publicUser(user).progression;io.to(p.id).emit('progression:update',{user:user?accounts.publicUser(user):null,earned:amount});}}).catch(()=>{for(const p of room.players.filter(p=>p.accountUsername===name))io.to(p.id).emit('progression:update',{earned:0,error:'XP could not be saved. Account storage is unavailable.'});});
+    }
+
   }
   function tick(room, now) {
     const g = room.game;
@@ -287,8 +294,8 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         respawn: room.phase==='playing'&&me&&now<(me.respawnUntil||0)?{cause:me.resetCause,penalty:me.resetCause==='sentinel'?g.settings.sentinel:g.settings.gap,remaining:(me.respawnUntil-now)/1000}:null,
         recovered: g.items.filter(i=>i.delivered).map(i=>({id:i.id,kind:i.kind,name:i.name,value:i.recoveredValue})),
         difficulty:g.difficulty,difficultyLabel:g.settings.label, duration:g.settings.seconds,
-        quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
-        actors: g.actors.map(a => ({ id: a.id, name: a.name, role:a.role, avatar:a.avatar, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, health:a.health, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
+        xpAward:g.xpAward||0, quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
+        actors: g.actors.map(a => ({ id: a.id, name: a.name, role:a.role, avatar:a.avatar, heritage:a.heritage, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, health:a.health, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
         // Only a coarse warning intensity reaches bodycams, never enemy coordinates.
         threat: !navigator && me && room.phase==='playing' ? Math.round(clamp((9-dist(me,g.enemy))/8,0,1)*10)/10 : 0,
@@ -310,7 +317,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.9.1'});
+    socket.emit('build', {version:'4.0.1'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -333,14 +340,14 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       if(now-lastDev<200)return reply({error:'Wait a moment.'});lastDev=now;
       const room=rooms.get(socket.data.code);
       if(!room||room.phase!=='playing')return reply({error:'Launch a recovery mission in your room first.'});
-      const g=room.game,targets=data?.target==='all'?g.actors:g.actors.filter(a=>a.id===data?.target);
+      const g=room.game,targets=data?.target==='all'?g.actors:g.actors.filter(a=>a.id===data?.target);g.devUsed=true;
       if(['red','heartbeat','ambience','combined','clear'].includes(data?.action)){
         if(!targets.length)return reply({error:'Select a Scavenger.'});
         for(const a of targets)io.to(a.id).emit('dev:effect',{kind:data.action,seconds:5});
       }else if(data?.action==='freeze'){g.devFreeze=!g.devFreeze;event(g,`DEV TEST: Sentinel ${g.devFreeze?'frozen':'resumed'}.`);}
       else if(data?.action==='time'){g.deadline+=30000;event(g,'DEV TEST: +30 seconds.');}
-      else if(data?.action==='finish'){finish(room,'lost');}
-      else if(data?.action==='win'){g.score=QUOTA;finish(room,'won');}
+      else if(data?.action==='finish'){g.devUsed=true;finish(room,'lost');}
+      else if(data?.action==='win'){g.devUsed=true;g.score=QUOTA;finish(room,'won');}
       else {
         if(!targets.length)return reply({error:'Select a Scavenger.'});
         if(!['near','far','home','parkour','premium','protect','breach','catch','damage','grip','expire-grip'].includes(data?.action))return reply({error:'Unknown developer action.'});
@@ -370,7 +377,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
             const player=room.players.find(p=>p.id===a.id);player.input={};player.inputAt=0;
           }
         }
-        event(g,`DEV TEST: ${data.action}.`);
+        g.devUsed=true;event(g,`DEV TEST: ${data.action}.`);
       }
       reply({ok:true});snapshot(room,now);
     });
@@ -401,7 +408,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       const chosen=typeof data.role==='string'?data.role:!room.players.some(p=>p.role==='Navigator')?'Navigator':roleAvailable(room,'Scavenger')?'Scavenger':'Guardian';
       if(!Object.hasOwn(ROLE_LIMITS,chosen)){if(!room.players.length)rooms.delete(room.code);return reply({error:'Choose Navigator, Guardian or Recovery.'});}
       if(!roleAvailable(room,chosen)){if(!room.players.length)rooms.delete(room.code);return reply({error:`${chosen==='Scavenger'?'Recovery':chosen} role is not available. Please choose another role.`});}
-      room.players.push({ id: socket.id, role:chosen, name, accountUsername:account?.username||null, avatar:account?.avatar||'amber', input: {}, inputAt: 0 }); roles(room);
+      room.players.push({ id: socket.id, role:chosen, name, accountUsername:account?.username||null, avatar:account?.avatar||'amber', progression:account?accounts.publicUser(account).progression:null, input: {}, inputAt: 0 }); roles(room);
       socket.data.code = room.code; socket.join(room.code); reply({ ok: true }); roster(room);
     };
     socket.on('enter',enterRoom);
