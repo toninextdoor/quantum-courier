@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.8.0';
+import { trolleyLayout } from '/trolley-layout.js?v=3.9.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.8.0';
+import { checkBrowser } from '/self-check.js?v=3.9.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -179,7 +179,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.8.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.8.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.8.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.9.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.9.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.9.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -303,8 +303,8 @@ function initGraphics() {
   scene.add(camera); carryGroup = new THREE.Group(); camera.add(carryGroup);
   flashlight = new THREE.SpotLight(0xe9e1cf, 16, 18, Math.PI / 5, .6, 1.3); lightTarget = new THREE.Object3D(); scene.add(flashlight, lightTarget); flashlight.target = lightTarget;
   renderer.domElement.addEventListener('click', onMapClick);
-  renderer.domElement.addEventListener('pointerdown', e => { if (!touchDevice || state?.role === 'Navigator') return; renderer.domElement.setPointerCapture(e.pointerId); swipe = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
-  renderer.domElement.addEventListener('pointermove', e => { if (!swipe || swipe.id !== e.pointerId || state?.phase !== 'playing') return; yaw += (e.clientX - swipe.x) * .006; pitch = THREE.MathUtils.clamp(pitch + (e.clientY - swipe.y) * .004, -.8, .8); swipe.x = e.clientX; swipe.y = e.clientY; });
+  renderer.domElement.addEventListener('pointerdown', e => { if (!touchDevice || !canTouchPlay() || swipe) return; e.preventDefault(); renderer.domElement.setPointerCapture(e.pointerId); swipe = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
+  renderer.domElement.addEventListener('pointermove', e => { if (!swipe || swipe.id !== e.pointerId || !canTouchPlay()) return; e.preventDefault(); yaw += (e.clientX - swipe.x) * .006; pitch = THREE.MathUtils.clamp(pitch + (e.clientY - swipe.y) * .004, -.8, .8); swipe.x = e.clientX; swipe.y = e.clientY; });
   for (const type of ['pointerup','pointercancel','lostpointercapture']) renderer.domElement.addEventListener(type, e => { if (swipe?.id === e.pointerId) swipe = null; });
   renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); release(); $('renderError').hidden = false; showError('Graphics connection lost. Reload to rejoin your crew.'); });
   new ResizeObserver(resize).observe($('viewport'));
@@ -565,13 +565,14 @@ function onMapClick(e) {
   const point=new THREE.Vector3();const tablePlane=new THREE.Plane(new THREE.Vector3(0,1,0),-1.13);if(raycaster.ray.intersectPlane(tablePlane,point)&&hologram){hologram.updateMatrixWorld(true);hologram.worldToLocal(point);socket.emit('guide',{x:point.x,z:point.z});}
 }
 const mapping={' ':'jump',w:'forward',ArrowUp:'forward',s:'back',ArrowDown:'back',a:'left',d:'right',Shift:'sprint'};
+function canTouchPlay(){return state?.phase==='playing'&&state.role!=='Navigator'&&!state.respawn&&socket.connected&&$('introScreen').hidden&&!document.querySelector('dialog[open]');}
 function input() {
   if(!state||state.role==='Navigator'||!$('introScreen').hidden||state.respawn||state.phase!=='playing'||!socket.connected)return;
   const held=new Set([...keys].map(k=>mapping[k]).concat([...touches.values()]));
   socket.emit('input',{forward:Number(held.has('forward'))-Number(held.has('back')),strafe:Number(held.has('right'))-Number(held.has('left')),yaw,jump:held.has('jump')||performance.now()<jumpUntil,sprint:held.has('sprint')});
-  document.querySelectorAll('[data-move]').forEach(b=>b.classList.toggle('active',held.has(b.dataset.move)));
+  document.querySelectorAll('[data-move]').forEach(b=>{const active=held.has(b.dataset.move);b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
 }
-function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>b.classList.remove('active'));}
+function release(){jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false');});}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
   if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
@@ -584,12 +585,21 @@ window.addEventListener('blur',release);document.addEventListener('visibilitycha
 document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer?.domElement&&state?.phase==='playing'){yaw+=e.movementX*.0025;pitch=THREE.MathUtils.clamp(pitch+e.movementY*.002,-.8,.8);}});
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)release();$('clickToLook').hidden=state?.role==='Navigator'||touchDevice||!!document.pointerLockElement||state?.phase!=='playing';});
 $('lockMouse').onclick=()=>{try{const result=renderer?.domElement.requestPointerLock();result?.catch(()=>showError('Mouse capture unavailable. Use ← → to look, or swipe on mobile.'));}catch{showError('Use ← → to turn your view.');}};
-$('touchDrop').onclick=()=>{if(!state?.respawn)socket.emit('cargo:drop');};
-$('touchGrab').onclick=()=>{if(!state?.respawn)socket.emit('interact');};
+// Pointer capture keeps movement/sprint held while other fingers look, jump or grip.
+function touchAction(button,event){
+  button.addEventListener('pointerdown',e=>{if(!canTouchPlay())return;e.preventDefault();socket.emit(event);},{passive:false});
+  button.addEventListener('click',e=>{e.preventDefault();if(e.detail===0&&canTouchPlay())socket.emit(event);});
+}
+touchAction($('touchDrop'),'cargo:drop');touchAction($('touchGrab'),'interact');
 document.querySelectorAll('[data-move]').forEach(b=>{
-  b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);touches.set(e.pointerId,b.dataset.move);if(b.dataset.move==='jump')jumpUntil=performance.now()+150;input();});
+  b.addEventListener('pointerdown',e=>{e.preventDefault();if(!canTouchPlay())return;b.setPointerCapture(e.pointerId);touches.set(e.pointerId,b.dataset.move);if(b.dataset.move==='jump')jumpUntil=performance.now()+150;input();},{passive:false});
   for(const type of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(type,e=>{touches.delete(e.pointerId);input();});
 });
+// Cancel selection/callouts only on the game surface; forms and account codes stay usable.
+for(const type of ['contextmenu','selectstart','dragstart'])$('viewport').addEventListener(type,e=>{if(touchDevice&&!e.target.closest('input,textarea,select'))e.preventDefault();});
+$('viewport').addEventListener('dblclick',e=>{if(touchDevice)e.preventDefault();});
+window.addEventListener('orientationchange',release);
+new MutationObserver(()=>{if(document.querySelector('dialog[open]'))release();}).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});
 setInterval(input,50);
 function interpolate(now,current,old) {
   if(!old||Math.hypot(current.x-old.x,current.z-old.z)>2)return current;
@@ -730,7 +740,7 @@ socket.on('friend:invitation',invite=>{
 function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;const identity=document.createElement('div');identity.className='friendIdentity';identity.append(name);if(typeof user.online==='boolean'){const status=document.createElement('span');status.className=user.online?'presence online':'presence offline';status.textContent=user.online?'Online':'Offline';identity.append(status);}row.append(image,identity);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;if(label==='Invite'&&user.online===false){b.disabled=true;b.title='Your friend needs the game open.';}row.append(b);}return row;}
 async function friendAction(action,username){try{const r=await fetch('/api/friends/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username})}),d=await r.json();if(!r.ok)throw Error(d.error);$('friendsStatus').textContent=action==='request'?'Friend request sent.':'Friends updated.';await loadFriends(true);}catch(e){$('friendsStatus').textContent=e.message;}}
 function inviteFriend(username){socket.timeout(5000).emit('friend:invite',{username},(err,r)=>{$('friendsStatus').textContent=err?'Invite timed out.':r.error||'Lobby invitation sent.';});}
-function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id,role:$('inviteRole').value},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
+function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
 async function loadFriends(keepStatus=false){
  $('friendForm').hidden=!accountUser;
  if(!accountUser){$('friendsStatus').textContent='Sign in from Options to add friends and receive invitations.';for(const id of ['friendList','friendIncoming','friendOutgoing','friendInvites'])$(id).replaceChildren();return;}
