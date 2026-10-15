@@ -17,3 +17,16 @@ test('original UI synthesizer uses separate click and entrance voices and can st
  const {playUISound}=await import('../public/menu-audio.mjs');let voices=0,stopped=0;const param={setValueAtTime(){},exponentialRampToValueAtTime(){}};const audio={state:'running',currentTime:10,createGain:()=>({gain:param,connect(){},disconnect(){}}),createOscillator:()=>{voices++;return {frequency:param,connect(){},disconnect(){},start(){},stop(){stopped++;}};}};
  const stop=playUISound('entrance',audio,{});assert.equal(voices,5);stop();assert.equal(stopped,10);playUISound('click',audio,{});assert.equal(voices,7);audio.state='suspended';playUISound('click',audio,{});assert.equal(voices,7);
 });
+
+test('entrance chime is consumed once and does not replay with How to Play',async()=>{
+ const source=fs.readFileSync(require.resolve('../public/game.js'),'utf8'),snippet=source.slice(source.indexOf('let entranceConsumed=false;'),source.indexOf("$('enterIntro').onclick="));const intro={hidden:false},played=[];const context=vm.createContext({$:id=>id==='introScreen'?intro:{inert:true},document:{documentElement:{dataset:{}},querySelector:()=>({inert:true})},sessionStorage:{setItem(){}},unlockAudio:async()=>{},homeAudioAllowed:()=>true,playMenuSound:k=>played.push(k),updateLobbyAmbience(){}});vm.runInContext(snippet,context);
+ await vm.runInContext('dismissIntro()',context);assert.deepEqual(played,['entrance']);intro.hidden=false;await vm.runInContext('dismissIntro()',context);assert.deepEqual(played,['entrance']);
+});
+test('lobby ambience lifecycle never stacks and stops for mute, briefing, hidden tab or round',()=>{
+ const source=fs.readFileSync(require.resolve('../public/game.js'),'utf8'),snippet=source.slice(source.indexOf('function updateLobbyAmbience(){'),source.indexOf('let menuSoundStops='));let starts=0,stops=0,allowed=true;const document={documentElement:{dataset:{stage:'app'}}},intro={hidden:true};const context=vm.createContext({document,$:()=>intro,lobby:{phase:'lobby'},audio:{state:'running'},master:{},lobbyBedStop:null,homeAudioAllowed:()=>allowed,startLobbyAmbience:()=>{starts++;return ()=>stops++;}});vm.runInContext(snippet,context);const update=()=>vm.runInContext('updateLobbyAmbience()',context);
+ update();update();assert.equal(starts,1);document.documentElement.dataset.stage='briefing';update();assert.equal(stops,1);document.documentElement.dataset.stage='app';update();assert.equal(starts,2);context.lobby.phase='playing';update();assert.equal(stops,2);context.lobby.phase='lobby';allowed=false;update();assert.equal(starts,2);
+});
+test('lobby chord scheduler cleans up its timer and voices on stop',async()=>{
+ const {startLobbyAmbience}=await import('../public/menu-audio.mjs');let tick,cancelled=0,voices=0,stops=0;const param={setValueAtTime(){},exponentialRampToValueAtTime(){},cancelScheduledValues(){}};const audio={state:'running',currentTime:0,createGain:()=>({gain:param,connect(){},disconnect(){}}),createOscillator:()=>{voices++;return {frequency:param,connect(){},disconnect(){},start(){},stop(){stops++;}};}};
+ const stop=startLobbyAmbience(audio,{}, {schedule:fn=>{tick=fn;return 7;},cancel:id=>{assert.equal(id,7);cancelled++;}});assert.equal(voices,3);tick();assert.equal(voices,6);stop();stop();assert.equal(cancelled,1);tick();assert.equal(voices,6);assert.equal(stops,12);
+});

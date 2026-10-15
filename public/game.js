@@ -1,9 +1,9 @@
-import {drawCrop} from '/photo-crop.mjs?v=4.2.0';
-import {playUISound} from '/menu-audio.mjs?v=4.2.0';
-import {bindJoystick} from '/joystick.mjs?v=4.2.0';
-import { trolleyLayout } from '/trolley-layout.js?v=4.2.0';
+import {drawCrop} from '/photo-crop.mjs?v=4.2.1';
+import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.2.1';
+import {bindJoystick} from '/joystick.mjs?v=4.2.1';
+import { trolleyLayout } from '/trolley-layout.js?v=4.2.1';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.2.0';
+import { checkBrowser } from '/self-check.js?v=4.2.1';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -47,7 +47,8 @@ $('deviceReopen').onclick=()=>{release();document.exitPointerLock?.();$('deviceS
 $('closeDevice').onclick=()=>$('deviceDialog').close();
 $('deviceDialog').addEventListener('close',()=>{$('devicePanel').hidden=true;$('front').prepend($('devicePanel'));try{sessionStorage.setItem('room905-device-collapsed','yes');}catch{}});
 try{if(sessionStorage.getItem('room905-device-collapsed')==='yes'){$('devicePanel').hidden=true;$('deviceReopen').hidden=false;}}catch{}
-async function dismissIntro(){ document.documentElement.dataset.stage='app';$('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();if(homeAudioAllowed())playMenuSound('entrance'); }
+let entranceConsumed=false;
+async function dismissIntro(){ if($('introScreen').hidden)return;const firstExit=!entranceConsumed;entranceConsumed=true; document.documentElement.dataset.stage='app';$('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();if(firstExit&&homeAudioAllowed())playMenuSound('entrance');updateLobbyAmbience(); }
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
@@ -73,7 +74,7 @@ function turnBook(index){
 }
 $('bookNext').onclick=()=>turnBook(bookIndex+1);$('bookPrev').onclick=()=>turnBook(bookIndex-1);
 window.addEventListener('keydown',e=>{if($('introScreen').hidden)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
-$('replayBriefing').onclick=()=>{document.documentElement.dataset.stage='briefing';release();document.exitPointerLock?.();turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();};
+$('replayBriefing').onclick=()=>{document.documentElement.dataset.stage='briefing';release();document.exitPointerLock?.();turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();updateLobbyAmbience();};
 turnBook(0);
 // Startup always proceeds disclosure -> briefing -> lobby; Skip remains available.
 if(!$('introScreen').hidden){document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();}
@@ -81,6 +82,7 @@ applyQuality(quality,qualityAuto);
 setTimeout(runBrowserCheck,0);
 let slowWindows=0,monitorFrames=0,monitorAt=performance.now();
 let threatLevel = 0, lastHeartbeat = 0;
+let lobbyBedStop=null;
 let swipe = null, soundOn = true, audio = null, ambience = null, audioTestUntil = 0, master = null, analyser = null, audioPending = false, audioWave = null;
 const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const mint = 0xb9f8bd, cyan = 0x64ddd4, amber = 0xfac875, red = 0xff666e;
@@ -107,6 +109,7 @@ async function unlockAudio() {
   } catch { audioPending=true; $('sound').textContent='ENABLE SOUND'; }
 }
 function updateAmbience() {
+  updateLobbyAmbience();
   if(!ambience)return;
   const active=soundOn&&!document.hidden&&(state?.phase==='playing'||(devEffect?.until>performance.now()&&['ambience','combined'].includes(devEffect.kind)));
   const preview=devEffect?.until>performance.now()&&['ambience','combined'].includes(devEffect.kind);
@@ -184,11 +187,11 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.2.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.2.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.2.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.2.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.2.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.2.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
-  lobby = data; $('entry').hidden = true; $('lobby').hidden = data.phase !== 'lobby';
+  lobby = data;updateLobbyAmbience(); $('entry').hidden = true; $('lobby').hidden = data.phase !== 'lobby';
   $('roomCode').textContent = data.code; $('roomTag').textContent = data.code;
   $('count').textContent = `${data.players.length} / 4`;
   const roleNames={Navigator:'Navigator',Guardian:'Guardian',Scavenger:'Recovery'},roleHints={Navigator:'Guide the crew from mission command.',Guardian:'Track the Sentinel. Time your pulse.',Scavenger:'Protect property and bring it home.'};
@@ -213,7 +216,7 @@ socket.on('lobby', data => {
   $('start').textContent = data.host === socket.id ? 'Enter Room 905 →' : 'Waiting for host to launch…';
   if (data.phase === 'lobby') {
     release(); document.exitPointerLock?.(); state = previous = null; updateAmbience();
-    $('front').hidden = false; $('game').hidden = true; $('result').hidden = true; $('footer').hidden = false; document.body.classList.remove('inGame');
+    $('front').hidden = false; $('game').hidden = true; $('result').hidden = true; $('footer').hidden = false; document.body.classList.remove('inGame');updateLobbyAmbience();
   }
 });
 socket.on('chat', data => {
@@ -221,7 +224,7 @@ socket.on('chat', data => {
   $('chatLog').append(line); while ($('chatLog').children.length > 50) $('chatLog').firstChild.remove(); $('chatLog').scrollTop = $('chatLog').scrollHeight; tone(700, 0.06, 'sine', 0.025);
 });
 socket.on('world', data => {
-  stopMenuSounds();
+  stopMenuSounds();if(lobbyBedStop){lobbyBedStop();lobbyBedStop=null;}
   world = data;
   const nav = lobby?.players.find(p => p.id === socket.id)?.role === 'Navigator';
   try { initGraphics(); buildWorld(nav); $('renderError').hidden = true; }
@@ -864,6 +867,7 @@ $('refreshPhotos').onclick=()=>{
  socket.timeout(8000).emit('dev:photos',{},(err,result)=>{if(err||result?.error){$('devStatus').textContent=err?'Photo queue timed out.':result.error;return;}$('photoQueue').replaceChildren(...result.photos.map(p=>{const card=document.createElement('div');card.className='photoReview';const img=document.createElement('img');img.src=p.image;img.alt='Pending image from '+p.username;const name=document.createElement('strong');name.textContent=p.username;card.append(img,name);for(const action of ['approve','reject']){const b=document.createElement('button');b.textContent=action==='approve'?'Approve':'Reject';b.onclick=()=>{b.disabled=true;socket.timeout(8000).emit('dev:photo-review',{username:p.username,revision:p.revision,action},(error,r)=>{if(error||r?.error||!r?.ok){b.disabled=false;$('devStatus').textContent=error?'Review timed out.':r?.error||'Photo changed. Refresh the queue.';}else card.remove();});};card.append(b);}return card;}));if(!result.photos.length)$('photoQueue').textContent='No pending photos.';});
 };
 
+function updateLobbyAmbience(){const allowed=homeAudioAllowed()&&document.documentElement.dataset.stage==='app'&&$('introScreen').hidden&&lobby?.phase!=='playing'&&audio?.state==='running';if(allowed&&!lobbyBedStop)lobbyBedStop=startLobbyAmbience(audio,master);else if(!allowed&&lobbyBedStop){lobbyBedStop();lobbyBedStop=null;}}
 let menuSoundStops=[],lastMenuClick=-Infinity;
 function homeAudioAllowed(){return soundOn&&!document.hidden&&!document.body.classList.contains('inGame')&&state?.phase!=='playing';}
 function stopMenuSounds(){menuSoundStops.forEach(stop=>stop());menuSoundStops=[];}

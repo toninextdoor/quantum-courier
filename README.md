@@ -150,3 +150,8 @@ Profile now includes a live bio editor and photo preview. Photos remain private 
 ## v4.2 profile access, crop tools and menu audio
 
 Click your top-right username to open the full-screen profile editor. Upload a photo, drag the preview or use pan sliders, zoom, rotate, mirror or reset before submitting. The existing moderator review still applies to the final edited crop. Original synthesized menu clicks are limited to menus outside gameplay; the briefing exit has a separate mystical entrance chord. Both respect Sound Off and stop at round start or when the tab hides.
+
+
+## v4.2.1 audio and header polish
+
+Entrance chime plays on the first briefing exit per page load only. A replay is silent. Quiet original lobby chords start after briefing and stop for gameplay, briefing replay, Sound Off and hidden tabs. Click gain is about 60% higher. Profile title/Close now have an inset, safe-area-aware sticky header.
