@@ -84,7 +84,7 @@ Audio debugging: local console tests play on the developer device, including Nav
 
 ## Intro and browser readiness (v2.6)
 
-A skippable four-page illustrated hotel field guide appears after disclosure at startup. Next/Back, page dots, keyboard arrows and Escape provide navigation. Enter on the last page or Skip dismisses it and unlocks synthesized elevator-chime audio. HOW TO PLAY reopens it. The same-time local readiness check renders a sample scene, estimates FPS at progressively lower pixel densities, and recommends Normal, Low or Minimal. No performance results or hardware identifiers are uploaded. WebGL failure blocks room creation/join until a successful rerun. RUN CHECK works between rounds, USE RECOMMENDED restores automatic mode, and the graphics button cycles manual settings. Automatic mode can lower quality after sustained low frame rate; manual choices remain under the player’s control. The check is an estimate and is not a substitute for actual multiplayer playtesting.
+A skippable four-page illustrated hotel field guide appears after disclosure at startup. Next/Back, page dots, keyboard arrows and Escape provide navigation. Enter on the last page or Skip dismisses it and plays an original layered mystical entrance chime when sound is enabled. HOW TO PLAY reopens it. The same-time local readiness check renders a sample scene, estimates FPS at progressively lower pixel densities, and recommends Normal, Low or Minimal. No performance results or hardware identifiers are uploaded. WebGL failure blocks room creation/join until a successful rerun. RUN CHECK works between rounds, USE RECOMMENDED restores automatic mode, and the graphics button cycles manual settings. Automatic mode can lower quality after sustained low frame rate; manual choices remain under the player’s control. The check is an estimate and is not a substitute for actual multiplayer playtesting.
 
 Hotel staff have authorized recovery of abandoned property. The Sentinel is an abstract signal beacon; encounters cause sensor resets, timer and property-condition penalties, never injury or attacks.
 
@@ -145,3 +145,8 @@ See UPDATE.md for v4.0 progression, joystick and testing-profile details.
 ## v4.1 profile photos and moderation
 
 Profile now includes a live bio editor and photo preview. Photos remain private until approved through the existing developer console; use Load pending photos to review. Approved photos appear in the header, profile, crew lobby and Friends. Removing a photo returns to the preset avatar. Existing DATABASE_URL and developer credentials are used; migrations are automatic. npm ci now installs sharp for validated image decoding/re-encoding. See ACCOUNTS.md for retention and access details.
+
+
+## v4.2 profile access, crop tools and menu audio
+
+Click your top-right username to open the full-screen profile editor. Upload a photo, drag the preview or use pan sliders, zoom, rotate, mirror or reset before submitting. The existing moderator review still applies to the final edited crop. Original synthesized menu clicks are limited to menus outside gameplay; the briefing exit has a separate mystical entrance chord. Both respect Sound Off and stop at round start or when the tab hides.

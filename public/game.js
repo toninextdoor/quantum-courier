@@ -1,7 +1,9 @@
-import {bindJoystick} from '/joystick.mjs?v=4.1.0';
-import { trolleyLayout } from '/trolley-layout.js?v=4.1.0';
+import {drawCrop} from '/photo-crop.mjs?v=4.2.0';
+import {playUISound} from '/menu-audio.mjs?v=4.2.0';
+import {bindJoystick} from '/joystick.mjs?v=4.2.0';
+import { trolleyLayout } from '/trolley-layout.js?v=4.2.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.1.0';
+import { checkBrowser } from '/self-check.js?v=4.2.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -45,7 +47,7 @@ $('deviceReopen').onclick=()=>{release();document.exitPointerLock?.();$('deviceS
 $('closeDevice').onclick=()=>$('deviceDialog').close();
 $('deviceDialog').addEventListener('close',()=>{$('devicePanel').hidden=true;$('front').prepend($('devicePanel'));try{sessionStorage.setItem('room905-device-collapsed','yes');}catch{}});
 try{if(sessionStorage.getItem('room905-device-collapsed')==='yes'){$('devicePanel').hidden=true;$('deviceReopen').hidden=false;}}catch{}
-async function dismissIntro(){ document.documentElement.dataset.stage='app';$('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();tone(660,.18,'sine',.04);setTimeout(()=>tone(880,.25,'sine',.035),180); }
+async function dismissIntro(){ document.documentElement.dataset.stage='app';$('introScreen').hidden=true;document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('game').inert=false;$('front').inert=false;try{sessionStorage.setItem('room905-flipbook','seen');}catch{} await unlockAudio();if(homeAudioAllowed())playMenuSound('entrance'); }
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
@@ -120,12 +122,13 @@ function tone(frequency, duration = 0.12, type = 'sine', volume = 0.06, end = fr
 }
 $('sound').onclick = async () => {
   if(!soundOn||audio?.state!=='running'){soundOn=true;await unlockAudio();}else soundOn=false;updateAmbience();
-  $('sound').textContent=soundOn?(audio?.state==='running'?'SOUND ON':'ENABLE SOUND'):'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));tone(480);
+  if(!soundOn)stopMenuSounds();$('sound').textContent=soundOn?(audio?.state==='running'?'SOUND ON':'ENABLE SOUND'):'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));if(homeAudioAllowed())playMenuSound('click');
 };
 let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
 $('aboutButton').onclick=()=>{release();document.exitPointerLock?.();$('aboutDialog').showModal();};
 $('closeAbout').onclick=()=>$('aboutDialog').close();
-$('regularSignIn').onclick=()=>{release();document.exitPointerLock?.();$('regularDialog').showModal();loadAccount();};
+function openProfile(){release();document.exitPointerLock?.();$('optionsMenu').open=false;$('regularDialog').classList.toggle('profilePage',!!accountUser);$('regularDialog').showModal();loadAccount();}
+$('regularSignIn').onclick=$('headerUsername').onclick=openProfile;
 $('continueGuest').onclick=()=>$('regularDialog').close();
 $('sound').addEventListener('click',()=>{
   const now=performance.now();soundTapCount=now-soundTapAt>3000?1:soundTapCount+1;soundTapAt=now;
@@ -181,7 +184,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.1.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.1.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.1.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.2.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.2.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.2.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -218,6 +221,7 @@ socket.on('chat', data => {
   $('chatLog').append(line); while ($('chatLog').children.length > 50) $('chatLog').firstChild.remove(); $('chatLog').scrollTop = $('chatLog').scrollHeight; tone(700, 0.06, 'sine', 0.025);
 });
 socket.on('world', data => {
+  stopMenuSounds();
   world = data;
   const nav = lobby?.players.find(p => p.id === socket.id)?.role === 'Navigator';
   try { initGraphics(); buildWorld(nav); $('renderError').hidden = true; }
@@ -674,7 +678,7 @@ function drawAvatars(){
 }
 function showAccount(user){
  accountUser=user;renderProgression(user);refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
- $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';
+ $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';$('regularSignIn').hidden=!!user;$('forgotPassword').hidden=!!user;$('regularDialog').classList.toggle('profilePage',!!user);$('accountTitle').textContent=user?'Your profile':'Your next shift';
  $('profileName').textContent=user?`Signed in as ${user.username}`:'';if(user){$('profileBio').value=user.bio||'';updateBioPreview();$('photoStatus').textContent=photoStatusText(user.photoStatus);$('removePhoto').disabled=user.photoStatus==='none';if(user.photoStatus==='pending'){$('photoDraft').src='/api/account/photo-preview?t='+Date.now();$('photoDraft').hidden=false;}else if(!photoDraftData){$('photoDraft').hidden=true;}}
  $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
  drawAvatars();
@@ -686,8 +690,8 @@ async function loadAccount(){
 }
 async function accountAction(action,body={}){
  if(accountBusy)return;if(lobby){$('accountStatus').textContent='Leave your crew before changing your account or avatar.';return;}accountBusy=true;accountEpoch++;$('accountStatus').textContent='Saving…';
- try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});if(['register','login','logout','reset','delete'].includes(action)){socket.disconnect();socket.connect();}}
- catch(e){$('accountStatus').textContent=e.message;}finally{accountBusy=false;}
+ try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});if(['register','login','logout','reset','delete'].includes(action)){socket.disconnect();socket.connect();}return true;}
+ catch(e){$('accountStatus').textContent=e.message;return false;}finally{accountBusy=false;}
 }
 $('closeAccount').onclick=()=>$('regularDialog').close();
 $('accountForm').onsubmit=e=>{e.preventDefault();accountAction('login',{username:$('accountUser').value,password:$('accountPass').value});};
@@ -835,14 +839,37 @@ function updateBioPreview(){const value=$('profileBio').value;$('bioCount').text
 function photoStatusText(status){return ({none:'Using your preset badge.',pending:'Pending review · only you and the moderator can see this upload.',approved:'Photo approved · visible to your crew and friends.',rejected:'Photo not approved. Choose another image or use a preset.'})[status]||'Choose a profile photo.';}
 $('profileBio').addEventListener('input',updateBioPreview);
 $('saveProfile').onclick=()=>accountAction('profile',{bio:$('profileBio').value});
+let cropImage=null,cropSettings={zoom:1,x:0,y:0,quarter:0,flip:false},cropDrag=null,photoSelection=0;
+function refreshCrop(){
+ if(!cropImage)return;const g=drawCrop($('cropCanvas'),cropImage,cropSettings);$('cropZoom').value=cropSettings.zoom;$('cropX').value=cropSettings.x;$('cropY').value=cropSettings.y;$('cropX').disabled=g.overflowX<.01;$('cropY').disabled=g.overflowY<.01;$('mirrorPhoto').setAttribute('aria-pressed',String(cropSettings.flip));
+ photoDraftData=$('cropCanvas').toDataURL('image/jpeg',.85);$('photoDraft').src=photoDraftData;$('photoDraft').hidden=false;$('uploadPhoto').disabled=false;$('photoStatus').textContent='Your edited preview · submit when ready.';
+}
+function resetCrop(){cropSettings={zoom:1,x:0,y:0,quarter:0,flip:false};refreshCrop();}
+for(const [id,key]of [['cropZoom','zoom'],['cropX','x'],['cropY','y']])$(id).addEventListener('input',()=>{cropSettings[key]=Number($(id).value);refreshCrop();});
+$('rotateLeft').onclick=()=>{cropSettings.quarter--;cropSettings.x=cropSettings.y=0;refreshCrop();};
+$('rotateRight').onclick=()=>{cropSettings.quarter++;cropSettings.x=cropSettings.y=0;refreshCrop();};
+$('mirrorPhoto').onclick=()=>{cropSettings.flip=!cropSettings.flip;refreshCrop();};$('resetCrop').onclick=resetCrop;
+$('cropCanvas').addEventListener('pointerdown',e=>{if(!cropImage||cropDrag)return;e.preventDefault();$('cropCanvas').setPointerCapture(e.pointerId);cropDrag={id:e.pointerId,x:e.clientX,y:e.clientY};});
+$('cropCanvas').addEventListener('pointermove',e=>{if(!cropImage||!cropDrag||cropDrag.id!==e.pointerId)return;e.preventDefault();const g=drawCrop($('cropCanvas'),cropImage,cropSettings),ratio=256/$('cropCanvas').getBoundingClientRect().width;cropSettings.x=Math.max(-1,Math.min(1,cropSettings.x+(g.overflowX?(e.clientX-cropDrag.x)*ratio/g.overflowX:0)));cropSettings.y=Math.max(-1,Math.min(1,cropSettings.y+(g.overflowY?(e.clientY-cropDrag.y)*ratio/g.overflowY:0)));cropDrag.x=e.clientX;cropDrag.y=e.clientY;refreshCrop();});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])$('cropCanvas').addEventListener(type,e=>{if(cropDrag?.id===e.pointerId)cropDrag=null;});
 $('photoFile').addEventListener('change',async()=>{
- const file=$('photoFile').files[0];photoDraftData=null;$('uploadPhoto').disabled=true;if(!file)return;
+ const selection=++photoSelection,file=$('photoFile').files[0];photoDraftData=null;cropImage=null;$('cropEditor').hidden=true;$('uploadPhoto').disabled=true;if(!file)return;
  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024){$('photoStatus').textContent='Choose a JPEG, PNG or WebP under 8 MB.';return;}
- const url=URL.createObjectURL(file);const image=new Image();
- try{await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d');const side=Math.min(image.naturalWidth,image.naturalHeight);ctx.drawImage(image,(image.naturalWidth-side)/2,(image.naturalHeight-side)/2,side,side,0,0,256,256);photoDraftData=canvas.toDataURL('image/jpeg',.85);$('photoDraft').src=photoDraftData;$('photoDraft').hidden=false;$('photoStatus').textContent='Square preview · ready to submit for review.';$('uploadPhoto').disabled=false;}catch{$('photoStatus').textContent='This photo could not be opened. Try a smaller JPEG.';}finally{URL.revokeObjectURL(url);}
+ const url=URL.createObjectURL(file),image=new Image();
+ try{await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});if(selection!==photoSelection)return;cropImage=image;$('cropEditor').hidden=false;resetCrop();}catch{if(selection===photoSelection)$('photoStatus').textContent='This photo could not be opened. Try a smaller JPEG.';}finally{URL.revokeObjectURL(url);}
 });
-$('uploadPhoto').onclick=async()=>{if(!photoDraftData)return;$('uploadPhoto').disabled=true;await accountAction('photo',{image:photoDraftData});photoDraftData=null;};
-$('removePhoto').onclick=async()=>{photoDraftData=null;$('photoFile').value='';$('photoDraft').hidden=true;await accountAction('photo-remove');};
+$('uploadPhoto').onclick=async()=>{if(!photoDraftData)return;const sent=photoDraftData;$('uploadPhoto').disabled=true;const ok=await accountAction('photo',{image:sent});if(ok&&sent===photoDraftData){photoDraftData=null;cropImage=null;$('cropEditor').hidden=true;$('photoFile').value='';}else if(photoDraftData)$('uploadPhoto').disabled=false;};
+$('removePhoto').onclick=async()=>{if(await accountAction('photo-remove')){photoSelection++;photoDraftData=null;cropImage=null;$('cropEditor').hidden=true;$('photoFile').value='';$('photoDraft').hidden=true;$('uploadPhoto').disabled=true;}};
 $('refreshPhotos').onclick=()=>{
  socket.timeout(8000).emit('dev:photos',{},(err,result)=>{if(err||result?.error){$('devStatus').textContent=err?'Photo queue timed out.':result.error;return;}$('photoQueue').replaceChildren(...result.photos.map(p=>{const card=document.createElement('div');card.className='photoReview';const img=document.createElement('img');img.src=p.image;img.alt='Pending image from '+p.username;const name=document.createElement('strong');name.textContent=p.username;card.append(img,name);for(const action of ['approve','reject']){const b=document.createElement('button');b.textContent=action==='approve'?'Approve':'Reject';b.onclick=()=>{b.disabled=true;socket.timeout(8000).emit('dev:photo-review',{username:p.username,revision:p.revision,action},(error,r)=>{if(error||r?.error||!r?.ok){b.disabled=false;$('devStatus').textContent=error?'Review timed out.':r?.error||'Photo changed. Refresh the queue.';}else card.remove();});};card.append(b);}return card;}));if(!result.photos.length)$('photoQueue').textContent='No pending photos.';});
 };
+
+let menuSoundStops=[],lastMenuClick=-Infinity;
+function homeAudioAllowed(){return soundOn&&!document.hidden&&!document.body.classList.contains('inGame')&&state?.phase!=='playing';}
+function stopMenuSounds(){menuSoundStops.forEach(stop=>stop());menuSoundStops=[];}
+function playMenuSound(kind){if(!homeAudioAllowed()||audio?.state!=='running')return;if(kind==='entrance')stopMenuSounds();menuSoundStops.push(playUISound(kind,audio,master));if(menuSoundStops.length>12)menuSoundStops.shift()();}
+document.addEventListener('click',async e=>{
+ const button=e.target.closest('button,summary');if(!button||button.disabled||button.closest('#devDialog')||['sound','enterIntro','skipIntro'].includes(button.id)||document.documentElement.dataset.stage!=='app'||!homeAudioAllowed())return;
+ if(performance.now()-lastMenuClick<70)return;lastMenuClick=performance.now();await unlockAudio();if(homeAudioAllowed())playMenuSound('click');
+},true);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMenuSounds();});

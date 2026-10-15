@@ -158,7 +158,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.1.0', build:'room905-4.1.0-startup-fix' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.2.0', build:'room905-4.2.0-startup-fix' }));
   const ROLE_LIMITS={Navigator:1,Guardian:1,Scavenger:2};
   const roleAvailable=(room,role,except)=>Object.hasOwn(ROLE_LIMITS,role)&&room.players.filter(p=>p.id!==except&&p.role===role).length<ROLE_LIMITS[role];
   function roles(room){for(const p of room.players){p.input={};p.inputAt=0;}}
@@ -317,7 +317,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'4.1.0'});
+    socket.emit('build', {version:'4.2.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
