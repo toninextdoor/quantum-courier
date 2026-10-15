@@ -21,7 +21,7 @@ test('multiplayer authority, cargo, guidance, penalties, round result, replay an
     const initialLobby=next(a,'lobby'); const roomResponse=await request(a,'enter',{create:true,name:'Guide'}); const code=(await initialLobby).code;
     assert.equal(roomResponse.ok,true);assert.match(code,/^[A-Z]{4}$/);
     assert.match((await request(a,'start',{})).error,/Need/);
-    for(const [i,client]of [b,c,d].entries())assert.equal((await request(client,'enter',{name:`Runner${i}`,code:code.toLowerCase()})).ok,true);
+    for(const [i,client]of [b,c,d].entries())assert.equal((await request(client,'enter',{name:`Runner${i}`,role:i===0?'Guardian':'Scavenger',code:code.toLowerCase()})).ok,true);
     assert.match((await request(e,'enter',{name:'Extra',code})).error,/full/);
     assert.match((await request(b,'start',{})).error,/host/);
     let outsiderStates=0;outsider.on('state',()=>outsiderStates++);
@@ -45,9 +45,9 @@ test('multiplayer authority, cargo, guidance, penalties, round result, replay an
     Object.assign(actor,{x:7.71,z:12.5,yaw:Math.PI/2});b.emit('input',{forward:1,yaw:Math.PI/2,sprint:true});await delay(80);
     assert.ok(actor.x<7.73);assert.equal(second.condition,88);
     room.players[1].input={};room.players[1].inputAt=0;
-    const deadline=g.deadline;actor.safeUntil=0;Object.assign(actor,{x:6,z:11});await delay(65);
+    const deadline=g.deadline;actor.health=50;actor.safeUntil=0;Object.assign(actor,{x:6,z:11});await delay(65);
     assert.equal(actor.x,HOME.x);assert.equal(g.deadline,deadline-5000);assert.equal(actor.carrying,null);assert.equal(second.carrier,null);assert.equal(second.condition,68);
-    actor.safeUntil=0;Object.assign(actor,{x:24.5,z:5.5});Object.assign(g.enemy,{x:24.5,z:5.5});const before=g.deadline;const classified=await next(b,'state');assert.ok(classified.enemy);await delay(65);
+    actor.safeUntil=0;actor.respawnUntil=0;Object.assign(actor,{x:24.5,z:5.5});Object.assign(g.enemy,{x:24.5,z:5.5});const before=g.deadline;const classified=await next(b,'state');assert.ok(classified.enemy);await delay(65);
     assert.equal(actor.x,HOME.x);assert.equal(g.catches,1);assert.equal(g.deadline,before-10000);
     g.score=599;const third=g.items[2];third.carrier=actor.id;actor.carrying=third.id;Object.assign(actor,{x:HOME.x,z:HOME.z});
     await delay(70);assert.equal(room.phase,'finished');assert.equal(g.outcome,'won');
@@ -103,6 +103,7 @@ test('randomized replay, jump authority, platform landing, premium pickup and ex
     Object.assign(a,{x:premium.x,z:premium.z,y:platform.h,vy:0,grounded:true});await delay(380);runner.emit('interact');await delay(70);assert.equal(a.carrying,8);assert.equal(a.y,platform.h,'standing on platform remains stable');
     // Step down onto the adjacent lower platform and ensure its floor catches a fall.
     const lower=map.platforms[2];Object.assign(a,{x:lower.x+lower.w/2,z:lower.z+lower.d/2});await delay(450);assert.equal(a.y,lower.h);
+    for(const b of [map.platforms[1],map.platforms[0]]){Object.assign(a,{x:b.x+b.w/2,z:b.z+b.d/2,y:b.h,vy:0,grounded:true});await delay(80);}
     Object.assign(a,{x:HOME.x,z:HOME.z,y:0,vy:0,grounded:true});await delay(80);assert.equal(g.score,450);
     g.deadline=0;await delay(80);const oldLayout=JSON.stringify(map.walls);const world=next(nav,'world');await request(nav,'start',{});const newWorld=await world;
     assert.notEqual(newWorld.seed,map.seed);assert.notEqual(JSON.stringify(newWorld.walls),oldLayout);
@@ -155,8 +156,8 @@ test('developer authorization, room scope, effect broadcasts, logout and disable
   await delay(210);await request(b,'dev:action',{action:'premium',target:a.id});assert.equal(room.game.actors[0].carrying,8);
   await delay(210);await request(b,'dev:action',{action:'home',target:a.id});await delay(80);assert.equal(room.game.score,450);
   await delay(210);await request(b,'dev:action',{action:'finish'});assert.equal(room.phase,'finished');await request(b,'start',{});assert.equal(room.phase,'playing');
-  await delay(210);const deadline=room.game.deadline;await request(b,'dev:action',{action:'breach',target:a.id});assert.equal(room.game.deadline,deadline-5000);assert.equal(room.game.actors[0].x,HOME.x);
-  await delay(210);const deadline2=room.game.deadline;await request(b,'dev:action',{action:'catch',target:a.id});assert.equal(room.game.deadline,deadline2-10000);assert.equal(room.game.catches,1);
+  await delay(210);room.game.actors[0].health=50;const deadline=room.game.deadline;await request(b,'dev:action',{action:'breach',target:a.id});assert.equal(room.game.deadline,deadline-5000);assert.equal(room.game.actors[0].x,HOME.x);
+  await delay(210);room.game.actors[0].respawnUntil=0;const deadline2=room.game.deadline;await request(b,'dev:action',{action:'catch',target:a.id});assert.equal(room.game.deadline,deadline2-10000);assert.equal(room.game.catches,1);
   await delay(210);await request(b,'dev:action',{action:'parkour',target:a.id});await delay(210);await request(b,'dev:action',{action:'premium',target:a.id});await delay(210);await request(b,'dev:action',{action:'damage',target:a.id});assert.equal(room.game.items[8].condition,80);await delay(210);await request(b,'dev:action',{action:'expire-grip',target:a.id});await delay(80);assert.equal(room.game.actors[0].carrying,null);assert.equal(room.game.items[8].condition,72);
   await delay(210);await request(b,'dev:action',{action:'win'});assert.equal(room.game.outcome,'won');
   b.emit('dev:logout');await delay(210);assert.match((await request(b,'dev:action',{action:'time'})).error,/session/);
@@ -189,7 +190,7 @@ test('Guardian role visibility and stun authority, range, cooldown and replay re
  try{
  for(let i=0;i<4;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}
  const [nav,guard,crew,crew2]=cs;const l=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Nav'});const code=(await l).code;
- for(const [i,s]of cs.slice(1).entries())await request(s,'enter',{code,name:'Crew'+i});const worlds=cs.map(s=>next(s,'world'));await request(nav,'start',{});const w=await Promise.all(worlds);assert.ok(w[0].hazards.length);assert.deepEqual(w[1].hazards,[]);
+ for(const [i,s]of cs.slice(1).entries())await request(s,'enter',{code,name:'Crew'+i,role:i===0?'Guardian':'Scavenger'});const worlds=cs.map(s=>next(s,'world'));await request(nav,'start',{});const w=await Promise.all(worlds);assert.ok(w[0].hazards.length);assert.deepEqual(w[1].hazards,[]);
  const views=await Promise.all(cs.map(s=>next(s,'state')));assert.deepEqual(views.map(s=>s.role),['Navigator','Guardian','Scavenger','Scavenger']);assert.ok(views[0].enemy);assert.ok(views[1].enemy);assert.equal(views[2].enemy,null);assert.equal(views[3].enemy,null);assert.equal(views[2].guardian,null);
  const room=game.rooms.get(code),g=room.game,a=g.actors[0];g.devFreeze=true;
  assert.match((await request(nav,'guardian:stun',{})).error,/Guardian/);assert.match((await request(crew,'guardian:stun',{})).error,/Guardian/);
@@ -211,7 +212,7 @@ test('host controls difficulty; launch locks it and physics/penalties use select
  assert.equal((await request(host,'lobby:difficulty',{difficulty})).ok,true);const world=next(crew,'world');await request(host,'start',{});const w=await world,g=room.game;
  assert.equal(w.duration,{easy:240,normal:180,hard:150}[difficulty]);assert.ok(Math.abs((g.deadline-g.started)-w.duration*1000)<.001);assert.equal((await next(crew,'state')).difficulty,difficulty);assert.equal(g.settings.speed,{easy:.75,normal:1,hard:1.25}[difficulty]);
  assert.match((await request(host,'lobby:difficulty',{difficulty:'normal'})).error,/locked/);
- const a=g.actors[0],h=g.map.hazards[0],deadline=g.deadline;Object.assign(a,{x:h.x,z:h.z,safeUntil:0,y:0});await delay(100);assert.equal(g.deadline,deadline-g.settings.gap*1000);
+ const a=g.actors[0],h=g.map.hazards[0],deadline=g.deadline;Object.assign(a,{x:h.x,z:h.z,safeUntil:0,y:0,health:50});await delay(100);assert.equal(g.deadline,deadline-g.settings.gap*1000);
  }
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });
@@ -226,5 +227,45 @@ test('Flux Faults reboot the Sentinel without repeated stun stacking and rearm a
  assert.equal(g.enemy.mode,'flux-reboot');assert.ok(g.enemy.stunnedUntil>require('node:perf_hooks').performance.now()+3500);assert.equal(g.deadline,deadline,'robot fault does not penalize the crew');const expiry=g.enemy.stunnedUntil;
  await delay(180);assert.equal(g.enemy.stunnedUntil,expiry,'remaining in one field does not extend the reboot');const visible=await next(nav,'state');assert.ok(visible.enemy.stunned>3);assert.equal((await next(crew,'state')).enemy,null,'Recovery still receives no robot coordinates');
  g.enemy.stunnedUntil=0;g.enemy.faultUntil=0;await delay(80);assert.equal(g.enemy.stunnedUntil,0,'same fault does not retrigger until exit');Object.assign(g.enemy,{x:HOME.x,z:HOME.z});await waitFor(()=>g.enemy.faultZone===-1);assert.equal(g.enemy.faultZone,-1);Object.assign(g.enemy,{x:h.x,z:h.z});await waitFor(()=>g.enemy.stunnedUntil>expiry);assert.ok(g.enemy.stunnedUntil>expiry,JSON.stringify({expiry,enemy:g.enemy,h,phase:game.rooms.get(code).phase}));
+ }finally{cs.forEach(s=>s.disconnect());await game.close();}
+});
+
+test('failed premium descent returns the same damaged artifact; host controls chat mutes',async()=>{
+ const game=createGameServer({mapFactory:()=>generateMap(42),databaseUrl:''});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const cs=[];
+ try{for(let i=0;i<2;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}const [nav,crew]=cs,lp=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Nav'});const code=(await lp).code;await request(crew,'enter',{code,name:'Crew'});await request(nav,'start',{});const g=game.rooms.get(code).game,a=g.actors[0],item=g.items[8],origin=g.map.items[8];
+ const floor=floorCells(g.map.walls).find(p=>Math.hypot(p.x-HOME.x,p.z-HOME.z)>3&&!g.map.platforms.some(b=>p.x>=b.x&&p.x<=b.x+b.w&&p.z>=b.z&&p.z<=b.z+b.d)&&!g.map.hazards.some(h=>Math.hypot(p.x-h.x,p.z-h.z)<h.r+1));
+ Object.assign(a,{x:floor.x,z:floor.z,y:1.5,vy:-3,grounded:false,carrying:8,cargoSupport:origin.y,gripUntil:Infinity,safeUntil:Infinity});item.carrier=a.id;await delay(650);assert.equal(a.carrying,null);assert.equal(item.condition,85);assert.equal(item.x,origin.x);assert.equal(item.z,origin.z);assert.equal(item.y,origin.y);assert.equal(g.items.length,9);assert.equal(g.score,0);
+ assert.match((await request(crew,'chat:mute',{id:nav.id})).error,/host/);assert.equal((await request(nav,'chat:mute',{id:crew.id})).ok,true);assert.match((await request(crew,'chat','hello')).error,/muted/);
+ }finally{cs.forEach(s=>s.disconnect());await game.close();}
+});
+
+test('role reservations are exclusive, host and Navigator may differ, and roles persist into replay',async()=>{
+ const game=createGameServer({mapFactory:()=>generateMap(42),databaseUrl:''});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const cs=[];
+ try{for(let i=0;i<5;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}const [host,nav,guardian,rec,extra]=cs,lp=next(host,'lobby');
+ await request(host,'enter',{create:true,name:'Host',role:'Scavenger'});const code=(await lp).code;
+ assert.match((await request(host,'start',{})).error,/Navigator/);
+ await request(nav,'enter',{code,name:'Nav',role:'Navigator'});assert.match((await request(guardian,'enter',{code,name:'Guard',role:'Navigator'})).error,/not available/);assert.equal(game.rooms.get(code).players.length,2);
+ await delay(420);await request(guardian,'enter',{code,name:'Guard',role:'Guardian'});await request(rec,'enter',{code,name:'Rec',role:'Scavenger'});
+ assert.match((await request(rec,'lobby:role',{role:'Guardian'})).error,/not available/);assert.match((await request(extra,'enter',{code,name:'Extra',role:'Scavenger'})).error,/full/);
+ assert.match((await request(nav,'start',{})).error,/host/);await request(host,'start',{});const room=game.rooms.get(code);assert.deepEqual(room.players.map(p=>p.role),['Scavenger','Navigator','Guardian','Scavenger']);assert.ok(room.game.actors.some(a=>a.id===host.id));assert.ok(!room.game.actors.some(a=>a.id===nav.id));
+ host.emit('guide',{command:'STOP'});await delay(80);assert.equal(room.game.cue,null);nav.emit('guide',{command:'STOP'});await delay(80);assert.equal(room.game.cue.text,'STOP');assert.match((await request(rec,'lobby:role',{role:'Navigator'})).error,/before launch/);
+ room.game.deadline=0;await delay(100);await request(host,'start',{});assert.equal(room.players.find(p=>p.id===nav.id).role,'Navigator');
+ nav.disconnect();await delay(100);assert.equal(room.phase,'lobby');assert.match((await request(host,'start',{})).error,/Navigator/);assert.equal((await request(rec,'lobby:role',{role:'Navigator'})).ok,true);assert.equal((await request(host,'start',{})).ok,true);
+ }finally{cs.forEach(s=>s.disconnect());await game.close();}
+});
+
+test('suit integrity absorbs one EM hit, protects between hits and restores after readable recovery',async()=>{
+ const game=createGameServer({mapFactory:()=>generateMap(42),databaseUrl:''});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const cs=[];
+ try{
+ for(let i=0;i<2;i++){const s=io(`http://127.0.0.1:${game.server.address().port}`,{transports:['websocket']});cs.push(s);await next(s,'connect');}
+ const [nav,crew]=cs,lp=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Guide'});const code=(await lp).code;await request(crew,'enter',{code,name:'Crew'});await request(nav,'start',{});
+ const g=game.rooms.get(code).game,a=g.actors[0],h=g.map.hazards[0];g.devFreeze=true;Object.assign(g.enemy,{x:HOME.x,z:HOME.z});const deadline=g.deadline;
+ Object.assign(a,{x:h.x,z:h.z,y:0,safeUntil:0});await delay(120);assert.equal(a.health,50);assert.equal(g.deadline,deadline);assert.ok(!a.respawnUntil);assert.equal((await next(crew,'state')).actors.find(p=>p.id===crew.id).health,50);
+ await delay(220);assert.equal(a.health,50,'one continuous overlap cannot instantly count twice');
+ a.safeUntil=0;await delay(100);assert.equal(a.health,0);assert.equal(a.x,HOME.x);assert.equal(g.deadline,deadline-g.settings.gap*1000);let st=await next(crew,'state');assert.ok(st.respawn.remaining>3);assert.equal(st.respawn.cause,'breach');
+ await delay(1400);assert.equal(a.health,0);assert.ok((await next(crew,'state')).respawn,'cause is still readable after old timeout');
+ a.respawnUntil=0;await delay(100);assert.equal(a.health,100);assert.equal((await next(crew,'state')).respawn,null);
+ Object.assign(a,{x:HOME.x+4,z:HOME.z,safeUntil:0});Object.assign(g.enemy,{x:a.x,z:a.z});await delay(120);assert.equal(a.health,0,'one Sentinel contact depletes full health');assert.equal(g.catches,1);
+ g.deadline=0;await delay(100);await request(nav,'start',{});assert.equal(game.rooms.get(code).game.actors[0].health,100,'new round restores health');
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });

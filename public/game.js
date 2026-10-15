@@ -1,8 +1,9 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.5.0';
+import { trolleyLayout } from '/trolley-layout.js?v=3.8.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.5.0';
+import { checkBrowser } from '/self-check.js?v=3.8.0';
 const $ = id => document.getElementById(id);
 const socket = io();
+let selectedEntryRole='Navigator';
 let serverCompatible=true;
 const touchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 let lobby = null, state = null, previous = null, world = null, received = 0, yaw = 0, pitch = 0;
@@ -46,9 +47,9 @@ async function dismissIntro(){ document.documentElement.dataset.stage='app';$('i
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
- {kicker:'02 / YOUR CREW',title:'Know your role.<br>Work together.',text:'Player one is Navigator. In crews of 3–4, player two is Guardian; everyone else is Recovery. Two-player crews use Navigator + Recovery.',facts:['Navigator — see EM Flux Faults, the Sentinel and valuables on the hologram. Click the floor to guide your crew.','Guardian — see the Sentinel, but not gaps. F / SIGNAL PULSE pauses it for 3 seconds within 6m and a clear path; recharge takes 12 seconds.','Recovery — follow command, collect valuables and return them to the trolley. WASD / touch arrows move; mouse / swipe turns your view.'],chapter:'CREW ROLES',art:'views'},
+ {kicker:'02 / YOUR CREW',title:'Know your role.<br>Work together.',text:'Choose your role before joining. One Navigator, one Guardian and two Recovery slots are available. Launch needs a Navigator and at least one Recovery; Guardian is optional.',facts:['Navigator — see EM Flux Faults, the Sentinel and valuables on the hologram. Click the floor to guide your crew.','Guardian — see the Sentinel, but not gaps. F / SIGNAL PULSE pauses it for 3 seconds within 6m and a clear path; recharge takes 12 seconds.','Recovery — follow command, collect valuables and return them to the trolley. WASD / touch arrows move; mouse / swipe turns your view.'],chapter:'CREW ROLES',art:'views'},
  {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Tap E / GRIP at least every 2 seconds to keep hold. Q / DROP releases it. Letting go costs 8% condition.','Walk with property: sprinting into walls costs 12% condition. Less condition means less value.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
- {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a security automaton. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator sees Flux Faults: damaged power circuits scramble sensors. The same fields force the Sentinel robot to reboot for 4 seconds.','Normal mode: Flux Faults cost 5 seconds; Sentinel interference costs 10. Property is dropped and sensors reset at the hallway.','After a brief sensor reset, you reconnect at the hallway. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
+ {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a security automaton. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator sees Flux Faults: damaged power circuits scramble sensors. The same fields force the Sentinel robot to reboot for 4 seconds.','Suit integrity: two EM hits or one Sentinel hit trigger recovery. A first EM hit leaves 50%. Recovery costs 5 seconds for EM or 10 for Sentinel on Normal.','After a 3.5-second cause screen, you reconnect at the hallway with full integrity. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
 ];
 const bookIllustrations={
  door:'<rect x="70" y="12" width="140" height="200" rx="3" fill="#211b25" stroke="#d6b77d" stroke-width="2"/><rect x="112" y="47" width="56" height="35" rx="3" fill="none" stroke="#d6b77d"/><text x="140" y="71" text-anchor="middle" fill="#e8d5a9" font-family="serif" font-size="22">905</text><path d="M184 122h18" stroke="#d6b77d" stroke-width="4"/><path d="M40 213h200" stroke="#6f5b45"/>',
@@ -158,15 +159,15 @@ socket.on('dev:effect',async data=>{
   setLocalPreview(data.kind);audioPending=['heartbeat','ambience','combined'].includes(data.kind)&&audio?.state!=='running';
   if(['heartbeat','ambience','combined'].includes(data.kind)){soundOn=true;if(audio?.state!=='running')$('sound').textContent='ENABLE SOUND';await unlockAudio();$('sound').textContent=audio?.state==='running'?'SOUND ON':'ENABLE SOUND';$('sound').setAttribute('aria-pressed','true');}
 });
-$('create').onclick = () => send('enter', { create: true, name: $('name').value });
-$('join').onclick = () => send('enter', { name: $('name').value, code: $('code').value });
+$('create').onclick = () => send('enter', { create: true, name: $('name').value,role:selectedEntryRole });
+$('join').onclick = () => send('enter', { name: $('name').value, code: $('code').value,role:selectedEntryRole });
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').click(); });
 $('start').onclick = $('again').onclick = () => send('start', {});
 $('copyCode').onclick = async () => { try { await navigator.clipboard.writeText(lobby.code); $('copyCode').textContent = 'Copied!'; } catch { $('copyCode').textContent = `Code: ${lobby.code}`; } };
 $('helpButton').onclick = () => { release(); document.exitPointerLock?.(); $('helpDialog').showModal(); };
 $('closeHelp').onclick = () => $('helpDialog').close();
 $('chatInput').addEventListener('focus', release);
-$('chatForm').onsubmit = e => { e.preventDefault(); if ($('chatInput').value.trim()) { socket.emit('chat', $('chatInput').value); $('chatInput').value = ''; } };
+$('chatForm').onsubmit = e => { e.preventDefault(); if ($('chatInput').value.trim()) { socket.timeout(3000).emit('chat', $('chatInput').value,(err,r)=>{if(err||r?.error)showError(err?'Chat unavailable.':r.error);}); $('chatInput').value = ''; } };
 document.querySelectorAll('[data-command]').forEach(b => b.onclick = () => socket.emit('guide', { command: b.dataset.command }));
 function reset() {
   release(); $('resetScreen').hidden=true; threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
@@ -178,20 +179,31 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.5.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.5.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.5.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.8.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.8.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.8.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
   lobby = data; $('entry').hidden = true; $('lobby').hidden = data.phase !== 'lobby';
   $('roomCode').textContent = data.code; $('roomTag').textContent = data.code;
   $('count').textContent = `${data.players.length} / 4`;
-  $('players').replaceChildren(...data.players.map(p => {
-    const li = document.createElement('li'), name = document.createElement('strong'), role = document.createElement('span');
-    name.textContent = p.name + (p.id === socket.id ? ' · YOU' : '') + (p.id === data.host ? ' · HOST' : '');
-    role.textContent = p.role==='Navigator'?'NAVIGATOR':p.role==='Guardian'?'GUARDIAN':'RECOVERY CREW'; const badge=document.createElement('img');badge.className='rosterAvatar';badge.src=`/assets/avatars/${avatarColors[p.avatar]?p.avatar:'amber'}.svg`;badge.alt=`${p.avatar||'amber'} recovery badge`;li.append(badge,name, role); return li;
+  const roleNames={Navigator:'Navigator',Guardian:'Guardian',Scavenger:'Recovery'},roleHints={Navigator:'Guide the crew from mission command.',Guardian:'Track the Sentinel. Time your pulse.',Scavenger:'Protect property and bring it home.'};
+  const slots=[['Navigator',0],['Guardian',0],['Scavenger',0],['Scavenger',1]];
+  $('players').replaceChildren(...slots.map(([role,index])=>{
+    const player=data.players.filter(p=>p.role===role)[index],li=document.createElement('li');li.className='crewCard';li.dataset.role=role;
+    const badge=document.createElement('img');badge.src=`/assets/avatars/${player&&avatarColors[player.avatar]?player.avatar:'silver'}.svg`;badge.alt=player?`${player.name}'s avatar`:'Open crew slot';
+    const name=document.createElement('strong');name.textContent=player?player.name:'Available';
+    const roleLabel=document.createElement('span');roleLabel.className='crewRole';roleLabel.textContent=roleNames[role]+(role==='Scavenger'?` ${index+1}`:'');
+    const note=document.createElement('small');note.textContent=player?[player.id===socket.id?'YOU':'',player.id===data.host?'HOST':''].filter(Boolean).join(' · ')||'RESERVED':roleHints[role];
+    li.append(badge,roleLabel,name,note);
+    if(player?.id===socket.id)li.classList.add('yourCard');
+    if(!player){li.classList.add('openSlot');const button=document.createElement('button');button.className='ghost';button.textContent='Take this role';button.onclick=()=>send('lobby:role',{role});li.append(button);}
+    return li;
   }));
-  $('lobbyNotice').textContent = data.notice || (data.players.length < 2 ? 'Share this code with a friend. Two players are needed to launch.' : 'First player is Navigator. With 3–4 players, the second is Guardian; the rest are Recovery crew.');
-  $('start').disabled = data.host !== socket.id || data.players.length < 2;
+  const me=data.players.find(p=>p.id===socket.id);if(me)$('lobbyRole').value=me.role;
+  for(const option of $('lobbyRole').options)option.disabled=option.value!==me?.role&&data.players.filter(p=>p.role===option.value).length>=(option.value==='Scavenger'?2:1);
+  const canLaunch=data.players.some(p=>p.role==='Navigator')&&data.players.some(p=>p.role==='Scavenger');
+  $('lobbyNotice').textContent=data.notice||(canLaunch?'Crew roles ready. The host can launch when everyone is set.':'Fill Navigator and at least one Recovery slot to launch.');
+  $('start').disabled=data.host!==socket.id||!canLaunch;
   const difficulty=data.difficulty||'normal';document.querySelectorAll('[data-difficulty]').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.difficulty===difficulty));b.disabled=data.host!==socket.id||data.phase!=='lobby';});$('difficultyDetails').textContent=({easy:'4 minutes · slower Sentinel · gaps −3s / Sentinel −7s',normal:'3 minutes · standard Sentinel · gaps −5s / Sentinel −10s',hard:'2½ minutes · faster Sentinel · gaps −7s / Sentinel −12s'})[difficulty]+(data.host===socket.id?'':' · host selects');
   $('start').textContent = data.host === socket.id ? 'Enter Room 905 →' : 'Waiting for host to launch…';
   if (data.phase === 'lobby') {
@@ -200,7 +212,7 @@ socket.on('lobby', data => {
   }
 });
 socket.on('chat', data => {
-  const line = document.createElement('p'), name = document.createElement('b'); name.textContent = data.name + ': '; line.append(name, document.createTextNode(data.text));
+  const line = document.createElement('p'), name = document.createElement('b'); name.textContent = data.name + ': '; line.append(name, document.createTextNode(data.text));if(lobby?.host===socket.id&&data.id&&data.id!==socket.id){const mute=document.createElement('button');mute.className='chatMute';mute.textContent='Mute 60s';mute.onclick=()=>send('chat:mute',{id:data.id});line.append(mute);}
   $('chatLog').append(line); while ($('chatLog').children.length > 50) $('chatLog').firstChild.remove(); $('chatLog').scrollTop = $('chatLog').scrollHeight; tone(700, 0.06, 'sine', 0.025);
 });
 socket.on('world', data => {
@@ -219,6 +231,12 @@ socket.on('state', data => {
     $('resetCountdown').textContent=`Reconnecting in ${Math.max(.1,data.respawn.remaining).toFixed(1)}s…`;
   }
   const nav = data.role === 'Navigator', me = data.actors.find(a => a.id === socket.id);
+  $('healthPanel').hidden=nav||!me;
+  $('crewIntegrity').textContent=nav?data.actors.map(a=>`${a.name} · ${a.health??100}%`).join('  /  '):'';
+  const health=me?.health??100;
+  $('healthValue').textContent=health+'%';$('healthFill').style.width=health+'%';
+  $('healthPanel').classList.toggle('healthLow',health<=50);
+  $('healthHint').textContent=health===0?'Reconnecting suit…':health<=50?'Critical · avoid another hit':'Two EM hits · one Sentinel hit';
   if (currentRound !== data.roundId) {
     currentRound = data.roundId;showRoundWelcome(data); yaw = me?.yaw || 0; pitch = 0; lastEvent = -1; lastCue = ''; previous = null; release();
     $('result').hidden = true; $('chatLog').replaceChildren();
@@ -235,7 +253,7 @@ socket.on('state', data => {
   $('touchControls').hidden = nav || !touchDevice || data.phase !== 'playing'; $('viewport').classList.toggle('touchUI', touchDevice && !nav);
   $('clickToLook').hidden = nav || touchDevice || document.pointerLockElement === renderer?.domElement || data.phase !== 'playing';
   $('guideCue').hidden = !data.cue; if (data.cue) { $('guideCue').textContent = `NAVIGATOR: ${data.cue.text}`; $('guideCue').classList.toggle('danger', ['DANGER', 'STOP'].includes(data.cue.text)); }
-  if (data.cue && data.cue.until !== lastCue) { lastCue = data.cue.until; tone(880, .1, 'sine', .06, 550); }
+  if (data.cue && data.cue.until !== lastCue) { lastCue = data.cue.until; playGuideCue(data.cue.text);$('guideCue').dataset.command=data.cue.text; }
   const nextCargoKey = data.roundId + ':' + data.items.map(i => `${i.id}:${i.carrier || ''}:${i.condition}`).join('|');
   if (nav && nextCargoKey !== cargoListKey) {
     cargoListKey = nextCargoKey;
@@ -645,7 +663,7 @@ async function loadAccount(){
 }
 async function accountAction(action,body={}){
  if(accountBusy)return;if(lobby){$('accountStatus').textContent='Leave your crew before changing your account or avatar.';return;}accountBusy=true;$('accountStatus').textContent='Saving…';
- try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';socket.disconnect();socket.connect();}
+ try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});socket.disconnect();socket.connect();}
  catch(e){$('accountStatus').textContent=e.message;}finally{accountBusy=false;}
 }
 $('closeAccount').onclick=()=>$('regularDialog').close();
@@ -712,7 +730,7 @@ socket.on('friend:invitation',invite=>{
 function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;const identity=document.createElement('div');identity.className='friendIdentity';identity.append(name);if(typeof user.online==='boolean'){const status=document.createElement('span');status.className=user.online?'presence online':'presence offline';status.textContent=user.online?'Online':'Offline';identity.append(status);}row.append(image,identity);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;if(label==='Invite'&&user.online===false){b.disabled=true;b.title='Your friend needs the game open.';}row.append(b);}return row;}
 async function friendAction(action,username){try{const r=await fetch('/api/friends/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username})}),d=await r.json();if(!r.ok)throw Error(d.error);$('friendsStatus').textContent=action==='request'?'Friend request sent.':'Friends updated.';await loadFriends(true);}catch(e){$('friendsStatus').textContent=e.message;}}
 function inviteFriend(username){socket.timeout(5000).emit('friend:invite',{username},(err,r)=>{$('friendsStatus').textContent=err?'Invite timed out.':r.error||'Lobby invitation sent.';});}
-function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
+function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id,role:$('inviteRole').value},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
 async function loadFriends(keepStatus=false){
  $('friendForm').hidden=!accountUser;
  if(!accountUser){$('friendsStatus').textContent='Sign in from Options to add friends and receive invitations.';for(const id of ['friendList','friendIncoming','friendOutgoing','friendInvites'])$(id).replaceChildren();return;}
@@ -732,3 +750,18 @@ function showRoundWelcome(data){
  roundWelcomeTimer=setTimeout(()=>{$('roundWelcome').hidden=true;},2400);
 }
 document.querySelectorAll('[data-difficulty]').forEach(b=>b.onclick=()=>send('lobby:difficulty',{difficulty:b.dataset.difficulty}));
+
+let guideCueTimers=[];
+function playGuideCue(command){
+ guideCueTimers.forEach(clearTimeout);guideCueTimers=[];
+ const patterns={FORWARD:[[520,0],[720,110]],LEFT:[[640,0],[440,120]],RIGHT:[[440,0],[640,120]],STOP:[[250,0],[250,180]],DANGER:[[950,0],[550,100],[950,200]],EXTRACT:[[440,0],[550,110],[660,220]]};
+ for(const [frequency,delay]of patterns[command]||[[660,0]])guideCueTimers.push(setTimeout(()=>tone(frequency,.09,'sine',.045),delay));
+}
+$('forgotPassword').onclick=()=>{$('resetPasswordForm').hidden=!$('resetPasswordForm').hidden;};
+$('resetPasswordForm').onsubmit=e=>{e.preventDefault();accountAction('reset',{username:$('resetUser').value,code:$('resetCode').value,password:$('resetPass').value,confirm:$('resetConfirm').value});};
+$('generateRecovery').onclick=()=>accountAction('recovery',{password:$('recoveryPass').value});
+$('copyRecovery').onclick=async()=>{try{await navigator.clipboard.writeText($('recoveryCodeValue').textContent);$('accountStatus').textContent='Recovery code copied. Store it privately.';}catch{$('accountStatus').textContent='Select and copy the recovery code manually.';}};
+$('hideRecovery').onclick=()=>{$('recoveryCodeValue').textContent='';$('recoveryCodePanel').hidden=true;};
+
+document.querySelectorAll('[data-role-choice]').forEach(button=>button.onclick=()=>{selectedEntryRole=button.dataset.roleChoice;document.querySelectorAll('[data-role-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));});
+$('changeRole').onclick=()=>send('lobby:role',{role:$('lobbyRole').value});

@@ -132,3 +132,9 @@ The lobby creator selects Easy, Normal or Hard; settings are server-authoritativ
 
 ## v3.5 electromagnetic hazards
 EM Flux Faults affect players and the Sentinel security automaton. The robot reboots for four seconds on entry, allowing coordinated lure tactics. Navigator sees fault locations; Guardian sees the robot but not the faults. The robot uses an original articulated biped model with a blue disabled status.
+
+## v3.6 polish
+Failed premium parkour descents respawn the same damaged artifact. Recovery codes support password resets without email; existing users must generate a code before losing access. Baseline server chat moderation, host mutes and distinct Navigator audio cues improve communication. Read UPDATE.md and ACCOUNTS.md.
+
+## v3.7 chosen roles
+Select a role before entry. Slots are reserved on the server; unavailable roles produce a clear error. Interactive lobby cards show avatars, names, roles, host/self markers and vacancies. Roles can change before launch and persist through replay. Host and Navigator are independent.

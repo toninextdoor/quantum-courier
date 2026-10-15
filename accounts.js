@@ -11,16 +11,18 @@ function postgresStore(url){
  const {Pool}=require('pg');const pool=new Pool({connectionString:url,max:4,connectionTimeoutMillis:5000,statement_timeout:5000});
  pool.on('error',()=>{});
  let ready;
- const init=()=>ready||(ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS room905_users(username VARCHAR(18) PRIMARY KEY,password_hash TEXT NOT NULL,avatar VARCHAR(12) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());CREATE TABLE IF NOT EXISTS room905_sessions(token_hash CHAR(64) PRIMARY KEY,username VARCHAR(18) NOT NULL REFERENCES room905_users(username) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL);CREATE INDEX IF NOT EXISTS room905_session_expiry ON room905_sessions(expires_at);CREATE TABLE IF NOT EXISTS room905_friends(a VARCHAR(18) REFERENCES room905_users(username) ON DELETE CASCADE,b VARCHAR(18) REFERENCES room905_users(username) ON DELETE CASCADE,requester VARCHAR(18) NOT NULL,status VARCHAR(10) NOT NULL CHECK(status IN ('pending','accepted')),PRIMARY KEY(a,b),CHECK(a<>b));`);})().catch(e=>{ready=null;throw e;}));
+ const init=()=>ready||(ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS room905_users(username VARCHAR(18) PRIMARY KEY,password_hash TEXT NOT NULL,avatar VARCHAR(12) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());ALTER TABLE room905_users ADD COLUMN IF NOT EXISTS recovery_hash TEXT;CREATE TABLE IF NOT EXISTS room905_sessions(token_hash CHAR(64) PRIMARY KEY,username VARCHAR(18) NOT NULL REFERENCES room905_users(username) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL);CREATE INDEX IF NOT EXISTS room905_session_expiry ON room905_sessions(expires_at);CREATE TABLE IF NOT EXISTS room905_friends(a VARCHAR(18) REFERENCES room905_users(username) ON DELETE CASCADE,b VARCHAR(18) REFERENCES room905_users(username) ON DELETE CASCADE,requester VARCHAR(18) NOT NULL,status VARCHAR(10) NOT NULL CHECK(status IN ('pending','accepted')),PRIMARY KEY(a,b),CHECK(a<>b));`);})().catch(e=>{ready=null;throw e;}));
  const query=async(sql,args)=>{await init();return pool.query(sql,args);};
  return {
   async user(name){return (await query('SELECT * FROM room905_users WHERE username=$1',[name])).rows[0];},
-  async create(u){try{await query('INSERT INTO room905_users(username,password_hash,avatar) VALUES($1,$2,$3)',[u.username,u.password_hash,u.avatar]);return true;}catch(e){if(e.code==='23505')return false;throw e;}},
+  async create(u){try{await query('INSERT INTO room905_users(username,password_hash,avatar,recovery_hash) VALUES($1,$2,$3,$4)',[u.username,u.password_hash,u.avatar,u.recovery_hash||null]);return true;}catch(e){if(e.code==='23505')return false;throw e;}},
   async session(hash){return (await query('SELECT u.* FROM room905_sessions s JOIN room905_users u USING(username) WHERE s.token_hash=$1 AND s.expires_at>NOW()',[hash])).rows[0];},
   async addSession(hash,name,expiry){await query('DELETE FROM room905_sessions WHERE expires_at<NOW()');await query('INSERT INTO room905_sessions(token_hash,username,expires_at) VALUES($1,$2,$3)',[hash,name,new Date(expiry)]);},
   async revoke(hash){await query('DELETE FROM room905_sessions WHERE token_hash=$1',[hash]);},
   async avatar(name,avatar){await query('UPDATE room905_users SET avatar=$2 WHERE username=$1',[name,avatar]);},
   async remove(name){await query('DELETE FROM room905_users WHERE username=$1',[name]);},
+  async setRecovery(name,hash,password){return (await query('UPDATE room905_users SET recovery_hash=$2 WHERE username=$1 AND password_hash=$3 RETURNING username',[name,hash,password])).rowCount>0;},
+  async resetRecovery(name,hash,password){return (await query('WITH changed AS (UPDATE room905_users SET password_hash=$3,recovery_hash=NULL WHERE username=$1 AND recovery_hash=$2 RETURNING username),removed AS (DELETE FROM room905_sessions USING changed WHERE room905_sessions.username=changed.username RETURNING room905_sessions.username) SELECT username FROM changed',[name,hash,password])).rowCount>0;},
   async friendList(name){return (await query(`SELECT f.*,u.username,u.avatar FROM room905_friends f JOIN room905_users u ON u.username=CASE WHEN f.a=$1 THEN f.b ELSE f.a END WHERE f.a=$1 OR f.b=$1 ORDER BY u.username`,[name])).rows;},
   async friendRequest(name,other){const [a,b]=[name,other].sort();return (await query("INSERT INTO room905_friends(a,b,requester,status) VALUES($1,$2,$3,'pending') ON CONFLICT DO NOTHING RETURNING a",[a,b,name])).rowCount>0;},
   async friendAction(name,other,action){const [a,b]=[name,other].sort();if(action==='accept')return (await query("UPDATE room905_friends SET status='accepted' WHERE a=$1 AND b=$2 AND status='pending' AND requester=$3 RETURNING a",[a,b,other])).rowCount>0;return (await query('DELETE FROM room905_friends WHERE a=$1 AND b=$2 RETURNING a',[a,b])).rowCount>0;},
@@ -44,21 +46,35 @@ function installAccounts(app,{store,databaseUrl=process.env.DATABASE_URL}={}){
    if(attempts.size>2000)for(const [k,a]of attempts)if(now-a.start>60000)attempts.delete(k);
    let count=attempts.get(ip);if(!count||now-count.start>60000){count={start:now,n:0};attempts.set(ip,count);}if(++count.n>12)return res.status(429).json({error:'Too many account requests. Wait one minute.'});
    const body=req.body||{};
+   if(action==='reset'){
+    const name=typeof body.username==='string'?body.username.trim().toLowerCase():'';
+    if(!/^[a-z0-9_]{3,18}$/.test(name)||typeof body.code!=='string'||!/^[a-f0-9]{48}$/i.test(body.code.trim())||typeof body.password!=='string'||body.password.length<12||body.password.length>128||body.password!==body.confirm)return res.status(400).json({error:'Enter username, saved recovery code and matching passwords of 12–128 characters.'});
+    if(busy>=2)return res.status(429).json({error:'Try again shortly.'});busy++;let ok;
+    try{ok=await store.resetRecovery(name,hashToken(body.code.trim().toLowerCase()),await passwordHash(body.password));}finally{busy--;}
+    if(!ok)return res.status(401).json({error:'Invalid username or recovery code.'});
+    res.clearCookie('room905_session',{path:'/'});return res.json({user:null,reset:true});
+   }
    if(['register','login'].includes(action)){
     const name=typeof body.username==='string'?body.username.trim().toLowerCase():'';
     if(!/^[a-z0-9_]{3,18}$/.test(name)||typeof body.password!=='string'||body.password.length<12||body.password.length>128)return res.status(400).json({error:'Use a 3–18 character username (letters, numbers, underscores) and a 12–128 character password.'});
     if(busy>=2)return res.status(429).json({error:'Account server is busy. Try again shortly.'});busy++;
-    let u;try{
+    let u,recoveryCode;try{
      if(action==='register'){
       if(!AVATARS.includes(body.avatar))return res.status(400).json({error:'Choose an available avatar.'});
-      u={username:name,password_hash:await passwordHash(body.password),avatar:body.avatar};
+      recoveryCode=randomBytes(24).toString('hex');u={username:name,password_hash:await passwordHash(body.password),avatar:body.avatar,recovery_hash:hashToken(recoveryCode)};
       if(!await store.create(u))return res.status(409).json({error:'That username is taken.'});
      }else{u=await store.user(name);const valid=await verify(body.password,u?.password_hash||await dummy);if(!u||!valid)return res.status(401).json({error:'Incorrect username or password.'});}
     }finally{busy--;}
-    const old=tokenFrom(req.headers.cookie);if(old)await store.revoke(hashToken(old));const token=randomBytes(32).toString('hex');await store.addSession(hashToken(token),u.username,now+7*86400000);cookie(res,token,req);return res.json({user:publicUser(u)});
+    const old=tokenFrom(req.headers.cookie);if(old)await store.revoke(hashToken(old));const token=randomBytes(32).toString('hex');await store.addSession(hashToken(token),u.username,now+7*86400000);cookie(res,token,req);return res.json({user:publicUser(u),...(recoveryCode?{recoveryCode}:{})});
    }
    if(action==='logout'){const t=tokenFrom(req.headers.cookie);if(t)await store.revoke(hashToken(t));res.clearCookie('room905_session',{path:'/'});return res.json({user:null});}
    const u=await lookup(req.headers.cookie);if(!u)return res.status(401).json({error:'Sign in first.'});
+   if(action==='recovery'){
+    if(typeof body.password!=='string'||body.password.length>128||busy>=2)return res.status(400).json({error:'Enter your current password and try again.'});busy++;let valid;try{valid=await verify(body.password,u.password_hash);}finally{busy--;}
+    if(!valid)return res.status(401).json({error:'Incorrect password.'});const code=randomBytes(24).toString('hex');
+    if(!await store.setRecovery(u.username,hashToken(code),u.password_hash))return res.status(409).json({error:'Account changed. Sign in again.'});
+    return res.json({user:publicUser(u),recoveryCode:code});
+   }
    if(action==='avatar'){if(!AVATARS.includes(body.avatar))return res.status(400).json({error:'Choose an available avatar.'});await store.avatar(u.username,body.avatar);return res.json({user:publicUser({...u,avatar:body.avatar})});}
    if(action==='delete'){if(typeof body.password!=='string'||body.password.length>128||busy>=2)return res.status(400).json({error:'Enter your password and try again.'});busy++;let valid;try{valid=await verify(body.password,u.password_hash);}finally{busy--;}if(!valid)return res.status(401).json({error:'Incorrect password.'});await store.remove(u.username);res.clearCookie('room905_session',{path:'/'});return res.json({user:null});}
    res.status(404).json({error:'Unknown account action.'});

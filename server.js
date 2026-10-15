@@ -2,6 +2,7 @@
 const express = require('express');
 const {installAccounts}=require('./accounts');
 const {installFriends}=require('./friends');
+const {moderateChat}=require('./moderation');
 const http = require('node:http');
 const path = require('node:path');
 const { randomInt, createHash, timingSafeEqual } = require('node:crypto');
@@ -131,7 +132,7 @@ function freshGame(players, now, map = generateMap(),difficulty='normal') {
     map,
     difficulty, settings:DIFFICULTIES[difficulty],
     started: now, deadline: now + DIFFICULTIES[difficulty].seconds*1000, elapsed: 0, score: 0, deliveries: 0, catches: 0, damage: 0,
-    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, role:p.role, stunReady:0, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
+    actors: players.filter(p => p.role !== 'Navigator').map((p, i) => ({ id: p.id, name: p.name, role:p.role, stunReady:0, health:100, avatar:p.avatar||'amber', x: 3 + i * 0.7, z: 20.5, yaw: 0, y: 0, vy: 0, grounded: true, jumpHeld: false, carrying: null, safeUntil: now + 3000, bumpAt: -Infinity, speed: 0, steps: 0 })),
     items: map.items.map(i=>({...i})),
     enemy: { ...map.patrol[0], yaw: 0, mode: 'patrol', target: null, patrol: 0, path: [], recalc: 0 },
     ping: null, cue: null, eventId: 0, event: 'Room 905 is open. Recover authorized property and bring them back to the green hallway extraction pad.', outcome: null
@@ -156,8 +157,10 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.5.0', build:'room905-3.5.0-startup-fix' }));
-  function roles(room) { room.players.forEach((p, i) => { p.role = i === 0 ? 'Navigator' : room.players.length>=3&&i===1?'Guardian':'Scavenger'; p.input = {}; p.inputAt = 0; }); }
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '3.8.0', build:'room905-3.8.0-startup-fix' }));
+  const ROLE_LIMITS={Navigator:1,Guardian:1,Scavenger:2};
+  const roleAvailable=(room,role,except)=>Object.hasOwn(ROLE_LIMITS,role)&&room.players.filter(p=>p.id!==except&&p.role===role).length<ROLE_LIMITS[role];
+  function roles(room){for(const p of room.players){p.input={};p.inputAt=0;}}
   function roster(room) {
     io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, difficulty:room.difficulty||'normal', phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar }) => ({ id, name, role, avatar })) });
   }
@@ -167,24 +170,28 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     const before = item.condition; item.condition = Math.max(10, item.condition - amount);
     g.damage += Math.round(item.value * (before - item.condition) / 100);
   }
+  function restorePremium(g,item){const origin=g.map.items.find(i=>i.id===item.id);if(origin){item.x=origin.x;item.z=origin.z;item.y=origin.y||0;}item.carrier=null;}
+  function failParkour(g,a,item,damage){cargoDamage(g,item,damage);restorePremium(g,item);a.carrying=null;a.gripUntil=null;a.cargoSupport=0;event(g,`${item.name} returned to its platform, damaged. Try the route again.`,'damage');}
   function dropCargo(g,a,reason='dropped'){
     if(a.carrying===null)return;
-    const item=g.items[a.carrying];item.carrier=null;item.x=a.x;item.z=a.z;
+    const item=g.items[a.carrying];if(item.premium&&(a.y>.65||(a.cargoSupport||0)>.65)){failParkour(g,a,item,8);return;}a.cargoSupport=0;item.carrier=null;item.x=a.x;item.z=a.z;
     item.y=Math.max(0,...g.map.platforms.filter(b=>a.x>=b.x&&a.x<=b.x+b.w&&a.z>=b.z&&a.z<=b.z+b.d&&b.h<=a.y+.03).map(b=>b.h));
     a.carrying=null;a.gripUntil=null;cargoDamage(g,item,8);
     event(g,`${a.name} ${reason} ${item.name}. −8% condition.`, 'damage');
   }
   function resetActor(room, a, now, cause) {
     const g = room.game;
-    if (now < a.safeUntil || dist(a, HOME) < HOME.r) return;
+    if (now < a.safeUntil || now < (a.respawnUntil||0) || dist(a, HOME) < HOME.r) return;
+    a.health = Math.max(0,(a.health??100)-(cause==='sentinel'?100:50));
+    if(a.health>0){a.safeUntil=now+1800;event(g,`${a.name}: EM hit · 50% suit integrity. Clear the Flux Fault before protection ends.`,'damage');return;}
     if (a.carrying !== null) {
       const item = g.items[a.carrying]; item.carrier = null; item.x = a.x; item.z = a.z; item.y = Math.max(0,...g.map.platforms.filter(b=>a.x>=b.x&&a.x<=b.x+b.w&&a.z>=b.z&&a.z<=b.z+b.d&&b.h<=a.y+.03).map(b=>b.h));
-      cargoDamage(g, item, cause === 'sentinel' ? 35 : 20); a.carrying = null; a.gripUntil=null;
+      cargoDamage(g, item, cause === 'sentinel' ? 35 : 20);if(item.premium)restorePremium(g,item);a.cargoSupport=0; a.carrying = null; a.gripUntil=null;
     }
-    a.x = HOME.x; a.z = HOME.z; a.y = 0; a.vy = 0; a.grounded = true; a.speed = 0; a.safeUntil = now + 3000; a.respawnUntil = now + 1200; a.resetCause = cause;
+    a.x = HOME.x; a.z = HOME.z; a.y = 0; a.vy = 0; a.grounded = true; a.speed = 0; a.safeUntil = now + 6500; a.respawnUntil = now + 3500; a.resetCause = cause;
     g.deadline -= (cause === 'sentinel' ? g.settings.sentinel : g.settings.gap)*1000;
     if (cause === 'sentinel') g.catches++;
-    event(g, `${a.name}: ${cause === 'sentinel' ? 'signal interrupted by the Sentinel. −10s' : 'crossed a signal gap. −5s'}. Cargo dropped; returned to extraction.`, 'danger');
+    event(g, `${a.name}: ${cause === 'sentinel' ? 'Sentinel interference' : 'EM Flux Fault'} · suit integrity depleted. −${cause==='sentinel'?g.settings.sentinel:g.settings.gap}s. Cargo dropped; returning to extraction.`, 'danger');
   }
   function finish(room, outcome) {
     room.phase = 'finished'; room.game.outcome = outcome; room.game.finalRemaining = Math.max(0, (room.game.deadline - performance.now()) / 1000);
@@ -195,6 +202,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     if (now >= g.deadline) { finish(room, 'lost'); return; }
     g.elapsed += DT;
     for (const a of g.actors) {
+      if(a.health===0&&now>=(a.respawnUntil||0))a.health=100;
       const p = room.players.find(p => p.id === a.id), input = now >= (a.respawnUntil || 0) && now - p.inputAt < 350 ? p.input : {};
       let forward = (input.forward || 0), strafe = (input.strafe || 0), n = Math.max(1, Math.hypot(forward, strafe));
       forward /= n; strafe /= n;
@@ -218,6 +226,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       for(const b of g.map.platforms)if(a.x>=b.x&&a.x<=b.x+b.w&&a.z>=b.z&&a.z<=b.z+b.d&&old.y>=b.h-.03&&nextY<=b.h)floor=Math.max(floor,b.h);
       if(a.vy<=0&&nextY<=floor){a.y=floor;a.vy=0;a.grounded=true;}else a.grounded=false;
       resolvePlatformOverlap(a,g.map);
+      if(a.carrying!==null&&g.items[a.carrying]?.premium){if(a.grounded&&a.y<.15&&(a.cargoSupport||0)>.65)failParkour(g,a,g.items[a.carrying],15);else if(a.grounded)a.cargoSupport=a.y;}
       a.speed = dist(a, old) / DT; a.steps += a.speed * DT;
       if (carrying && bumped && input.sprint && now - a.bumpAt > 1100) {
         cargoDamage(g, g.items[a.carrying], 12); a.bumpAt = now;
@@ -279,7 +288,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         recovered: g.items.filter(i=>i.delivered).map(i=>({id:i.id,kind:i.kind,name:i.name,value:i.recoveredValue})),
         difficulty:g.difficulty,difficultyLabel:g.settings.label, duration:g.settings.seconds,
         quota: QUOTA, score: g.score, deliveries: g.deliveries, catches: g.catches, damage: g.damage,
-        actors: g.actors.map(a => ({ id: a.id, name: a.name, role:a.role, avatar:a.avatar, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
+        actors: g.actors.map(a => ({ id: a.id, name: a.name, role:a.role, avatar:a.avatar, x: a.x, z: a.z, y:a.y, grounded:a.grounded, yaw: a.yaw, carrying: a.carrying, health:a.health, speed: a.speed, safe: now < a.safeUntil, gripRemaining:a.carrying!==null?Math.max(0,((a.gripUntil||now)-now)/1000):0 })),
         items: g.items.filter(i => !i.delivered && (i.carrier === p.id || visible(i))).map(i => ({ ...i })),
         // Only a coarse warning intensity reaches bodycams, never enemy coordinates.
         threat: !navigator && me && room.phase==='playing' ? Math.round(clamp((9-dist(me,g.enemy))/8,0,1)*10)/10 : 0,
@@ -297,11 +306,11 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     if (!room) return;
     room.players = room.players.filter(p => p.id !== socket.id);
     if (!room.players.length) { rooms.delete(room.code); return; }
-    if (room.phase === 'playing') { room.phase = 'lobby'; room.game = null; room.notice = 'A teammate disconnected. Roles reassigned; launch a fresh shift.'; }
+    if (room.phase === 'playing') { room.phase = 'lobby'; room.game = null; room.notice = 'A teammate disconnected. Roles preserved; fill any missing role before relaunch.'; }
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'3.5.0'});
+    socket.emit('build', {version:'3.8.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -389,7 +398,10 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
         if (room.phase === 'playing') return reply({ error: 'Shift in progress. Join when it ends.' });
         if (room.players.length === 4) return reply({ error: 'Room full (4/4).' });
       }
-      room.players.push({ id: socket.id, name, accountUsername:account?.username||null, avatar:account?.avatar||'amber', input: {}, inputAt: 0 }); roles(room);
+      const chosen=typeof data.role==='string'?data.role:!room.players.some(p=>p.role==='Navigator')?'Navigator':roleAvailable(room,'Scavenger')?'Scavenger':'Guardian';
+      if(!Object.hasOwn(ROLE_LIMITS,chosen)){if(!room.players.length)rooms.delete(room.code);return reply({error:'Choose Navigator, Guardian or Recovery.'});}
+      if(!roleAvailable(room,chosen)){if(!room.players.length)rooms.delete(room.code);return reply({error:`${chosen==='Scavenger'?'Recovery':chosen} role is not available. Please choose another role.`});}
+      room.players.push({ id: socket.id, role:chosen, name, accountUsername:account?.username||null, avatar:account?.avatar||'amber', input: {}, inputAt: 0 }); roles(room);
       socket.data.code = room.code; socket.join(room.code); reply({ ok: true }); roster(room);
     };
     socket.on('enter',enterRoom);
@@ -419,8 +431,14 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
        if(!u||!invite||invite.to!==u.username||invite.expires<Date.now())return reply({error:'Invitation expired or unavailable.'});
        if(rooms.get(invite.code)!==invite.room)return reply({error:'This lobby is no longer available.'});
        if(!await accounts.store.areFriends(u.username,invite.from))return reply({error:'This friendship is no longer active.'});
-       await enterRoom({code:invite.code,name:u.username},r=>{if(r.ok)invitations.delete(invite.id);reply(r);});
+       await enterRoom({code:invite.code,name:u.username,role:data.role},r=>{if(r.ok)invitations.delete(invite.id);reply(r);});
       }catch{reply({error:'Could not join this invitation.'});}
+    });
+    socket.on('lobby:role',(data,ack)=>{
+      const reply=typeof ack==='function'?ack:()=>{},room=rooms.get(socket.data.code),player=room?.players.find(p=>p.id===socket.id);
+      if(!player||room.phase!=='lobby')return reply({error:'Roles can be changed in the lobby before launch.'});
+      if(!roleAvailable(room,data?.role,player.id))return reply({error:'That role is not available. Please choose another role.'});
+      player.role=data.role;roles(room);roster(room);reply({ok:true});
     });
     socket.on('lobby:difficulty',(data,ack)=>{
       const reply=typeof ack==='function'?ack:()=>{},room=rooms.get(socket.data.code);
@@ -432,7 +450,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     socket.on('start', (_data, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {}, room = rooms.get(socket.data.code);
       if (!room || room.players[0]?.id !== socket.id && !isDev(socket)) return reply({ error: 'The host launches the shift.' });
-      if (room.players.length < 2) return reply({ error: 'Need a Navigator and at least one Scavenger.' });
+      if(room.players.length<2||!room.players.some(p=>p.role==='Navigator')||!room.players.some(p=>p.role==='Scavenger'))return reply({error:'Need one Navigator and at least one Recovery crew member. Choose roles before launch.'});
       if (room.phase === 'playing') return reply({ error: 'Shift already running.' });
       roles(room); room.phase = 'playing'; room.notice = ''; room.game = freshGame(room.players, performance.now(), mapFactory(),room.difficulty||'normal');
       reply({ ok: true }); roster(room);
@@ -466,7 +484,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       if (!a || now < (a.respawnUntil || 0)) return;
       if(a.carrying!==null){a.gripUntil=now+2000;return;}
       const item = g.items.filter(i => !i.delivered && !i.carrier && dist(a, i) < 1.8 && Math.abs(a.y-(i.y||0))<.7 && clearLine(a, i, g.map.walls)).sort((i, j) => dist(a, i) - dist(a, j))[0];
-      if (item) { item.carrier = a.id; a.carrying = item.id; a.gripUntil=now+2000; event(g, `${a.name} secured ${item.name}. Return to extraction.`, 'pickup'); }
+      if (item) { item.carrier = a.id; a.carrying = item.id; a.gripUntil=now+2000;a.cargoSupport=item.premium?a.y:0; event(g, `${a.name} secured ${item.name}. Return to extraction.`, 'pickup'); }
     });
     socket.on('cargo:drop',()=>{
       const room=rooms.get(socket.data.code),now=performance.now();if(!room||room.phase!=='playing'||now-lastInteract<350)return;
@@ -475,18 +493,27 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     });
     socket.on('guide', data => {
       const room = rooms.get(socket.data.code), now = performance.now();
-      if (!room || room.phase !== 'playing' || room.players[0]?.id !== socket.id || !data || typeof data !== 'object' || now - lastGuide < 180) return;
+      if (!room || room.phase !== 'playing' || room.players.find(p=>p.id===socket.id)?.role !== 'Navigator' || !data || typeof data !== 'object' || now - lastGuide < 180) return;
       lastGuide = now;
       const commands = ['FORWARD', 'LEFT', 'RIGHT', 'STOP', 'DANGER', 'EXTRACT'];
       if (commands.includes(data.command)) room.game.cue = { text: data.command, until: now + 4500 };
       if (typeof data.x === 'number' && typeof data.z === 'number' && Number.isFinite(data.x) && Number.isFinite(data.z) && data.x > 1 && data.x < W - 1 && data.z > 1 && data.z < H - 1 && !solid(data.x, data.z,RADIUS,room.game.map.walls)) room.game.ping = { x: data.x, z: data.z, until: now + 12000 };
     });
-    socket.on('chat', text => {
+    socket.on('chat', (text,ack) => {
+      const reply=typeof ack==='function'?ack:()=>{};
       const room = rooms.get(socket.data.code), now = performance.now();
-      if (!room || typeof text !== 'string' || now - lastChat < 650) return;
-      const player = room.players.find(p => p.id === socket.id), message = text.trim().slice(0, 160);
-      if (!message) return; lastChat = now;
-      io.to(room.code).emit('chat', { name: player.name, text: message });
+      if(!room)return reply({error:'Join a crew first.'});
+      const player=room.players.find(p=>p.id===socket.id);if(!player)return;
+      if(now<(player.chatMutedUntil||0))return reply({error:'Chat is temporarily muted.'});
+      const result=moderateChat(text,player,now);if(result.error)return reply(result);
+      if(now-lastChat<650)return reply({error:'Wait a moment between messages.'});lastChat=now;
+      io.to(room.code).emit('chat',{id:player.id,name:player.name,text:result.text});reply({ok:true});
+    });
+    socket.on('chat:mute',(data,ack)=>{
+      const reply=typeof ack==='function'?ack:()=>{},room=rooms.get(socket.data.code);
+      if(!room||room.players[0]?.id!==socket.id)return reply({error:'Only the host can moderate crew chat.'});
+      const player=room.players.find(p=>p.id===data?.id);if(!player||player.id===socket.id)return reply({error:'Choose another crew member.'});
+      player.chatMutedUntil=performance.now()+60000;reply({ok:true});
     });
     socket.on('leave', () => { leave(socket); socket.emit('left'); });
     socket.on('disconnect', () => leave(socket));
