@@ -72,3 +72,5 @@ body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}.topb
 @media(pointer:coarse){body.inGame{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}body.inGame input,body.inGame textarea,body.inGame select,body.inGame #recoveryCodeValue{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}}
 
 @media(pointer:coarse) and (max-width:360px){.touchUI .touchMove{grid-template:repeat(3,44px)/repeat(3,44px);gap:4px}.touchUI .touchSprint{bottom:166px}.touchUI .touchActions{grid-template-columns:repeat(2,60px);gap:7px}}
+
+#pulseFeedback{position:absolute;right:14px;top:168px;max-width:min(250px,65%);padding:9px 12px;border:1px solid #7cae9f;border-radius:10px;background:#13252bef;color:#c8edde;font:11px/1.4 system-ui;z-index:6;pointer-events:none}.touchUI #guardianPulse{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;min-height:52px;min-width:105px;border-radius:12px}.touchUI #pulseFeedback{top:168px}@media(pointer:coarse) and (orientation:landscape) and (max-height:600px){.touchUI #pulseFeedback{top:72px;right:12px;max-width:210px}}

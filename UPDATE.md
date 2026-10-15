@@ -1,5 +1,5 @@
-# Room 905 v3.9.0
+# Room 905 v3.9.1
 
-Removed invitation role dropdown. Invitations choose an available role automatically; lobby role switching remains. Mobile game surface blocks text selection, callouts, drag and double-tap zoom while preserving form selection and browser zoom elsewhere. Larger dedicated hold-to-sprint button, multi-finger controls, immediate grab/grip on touch-down, swipe-through HUD, cancel/release cleanup, and phone/landscape/safe-area layout adjustments. Desktop control mappings and server physics unchanged.
+Guardian pulse mobile fix: fires on touch-down independently of movement, sprint and look pointers; suppresses the follow-up synthetic click and overlapping requests. Range/timeout/success feedback stays in an absolute game-view toast, avoiding the global error banner changing the page height during touch play. Larger mobile target and no F key hint on phones. Desktop click and F controls unchanged.
 
-Upload full contents preserving folders. No environment changes. Verify /health shows 3.9.0. Phone device playtest remains required.
+Upload full contents preserving folders; no Render environment changes. /health should show 3.9.1. Physical phone playtesting remains needed.

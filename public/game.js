@@ -1,6 +1,6 @@
-import { trolleyLayout } from '/trolley-layout.js?v=3.9.0';
+import { trolleyLayout } from '/trolley-layout.js?v=3.9.1';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=3.9.0';
+import { checkBrowser } from '/self-check.js?v=3.9.1';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -170,7 +170,7 @@ $('chatInput').addEventListener('focus', release);
 $('chatForm').onsubmit = e => { e.preventDefault(); if ($('chatInput').value.trim()) { socket.timeout(3000).emit('chat', $('chatInput').value,(err,r)=>{if(err||r?.error)showError(err?'Chat unavailable.':r.error);}); $('chatInput').value = ''; } };
 document.querySelectorAll('[data-command]').forEach(b => b.onclick = () => socket.emit('guide', { command: b.dataset.command }));
 function reset() {
-  release(); $('resetScreen').hidden=true; threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
+  release(); $('pulseFeedback').hidden=true;clearTimeout(pulseFeedbackTimer);pulsePending=false; $('resetScreen').hidden=true; threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
   $('front').hidden = false; $('entry').hidden = false; $('lobby').hidden = true; $('game').hidden = true; $('result').hidden = true;
   $('footer').hidden = false; document.body.classList.remove('inGame'); $('chatLog').replaceChildren();
   updateAmbience();
@@ -179,7 +179,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.9.0 · SERVER ${data.version}`; serverCompatible=data.version==='3.9.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.9.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 3.9.1 · SERVER ${data.version}`; serverCompatible=data.version==='3.9.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 3.9.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -245,7 +245,7 @@ socket.on('state', data => {
   $('sector').textContent = `ROOM 905 / LAYOUT ${data.mapSeed?.toString(16).toUpperCase() || '—'}`;
   $('role').textContent = nav ? 'NAVIGATOR' : data.role==='Guardian'?'GUARDIAN':'RECOVERY CREW'; $('viewLabel').textContent = nav ? 'MISSION COMMAND / ROOM 905' : data.role==='Guardian'?'GUARDIAN / SENTINEL LINK':'BODYCAM / SENSOR BLIND · TRUST COMMAND';
   if(data.role!==previous?.role)$('scavengerInfo').querySelector('p').textContent=data.role==='Guardian'?'Your bodycam can see the Sentinel, but EM Flux Faults stay hidden. Follow the Navigator. F / SIGNAL PULSE pauses the Sentinel for 3 seconds within 6m and a clear path; recharge takes 12 seconds. You can also grab property and keep tapping E / GRIP while carrying.':'Your bodycam cannot locate EM Flux Faults or the Sentinel. Red edges and heartbeat warn when it is close. Follow your Navigator. While carrying, tap E / GRIP every 2 seconds.';
-  $('guardianPulse').hidden=data.role!=='Guardian';$('guardianPulse').disabled=data.phase!=='playing'||!!data.respawn||(data.guardian?.cooldown||0)>0;$('guardianPulse').textContent=(data.guardian?.cooldown||0)>0?`PULSE · ${Math.ceil(data.guardian.cooldown)}s`:'[F] SIGNAL PULSE';
+  $('guardianPulse').hidden=data.role!=='Guardian';$('guardianPulse').disabled=data.phase!=='playing'||!!data.respawn||(data.guardian?.cooldown||0)>0;$('guardianPulse').textContent=(data.guardian?.cooldown||0)>0?`PULSE · ${Math.ceil(data.guardian.cooldown)}s`:touchDevice?'SIGNAL PULSE':'[F] SIGNAL PULSE';
   $('score').textContent = `$${data.score}`; $('progress').style.width = `${Math.min(100, data.score / data.quota * 100)}%`;
   const remaining = Math.ceil(data.remaining); $('time').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   $('time').classList.toggle('urgent', remaining <= 30);
@@ -705,7 +705,31 @@ optionsMenu.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault
 for(const id of ['replayBriefing','aboutButton','regularSignIn','deviceReopen','friendsButton','disclosureInfo'])$(id).addEventListener('click',()=>{optionsMenu.open=false;});
 optionsMenu.addEventListener('toggle',()=>{if(optionsMenu.open){release();document.exitPointerLock?.();}});
 
-$('guardianPulse').onclick=()=>send('guardian:stun',{});
+// Mobile pulse is independent of held movement/look pointers. Feedback never shifts layout.
+let pulsePending=false,pulseTouchAt=-Infinity,pulseFeedbackTimer;
+function mobilePulseFeedback(message){
+  clearTimeout(pulseFeedbackTimer);$('pulseFeedback').textContent=message;$('pulseFeedback').hidden=false;
+  pulseFeedbackTimer=setTimeout(()=>{$('pulseFeedback').hidden=true;},2600);
+}
+function requestMobilePulse(){
+  if(!canTouchPlay()||state.role!=='Guardian'||pulsePending)return;
+  if(!serverCompatible){mobilePulseFeedback('Update the game and reload.');return;}
+  if((state.guardian?.cooldown||0)>0){mobilePulseFeedback('Pulse recharging.');return;}
+  pulsePending=true;const round=state.roundId;
+  socket.timeout(5000).emit('guardian:stun',{},(err,response)=>{
+    pulsePending=false;if(state?.roundId!==round||state.phase!=='playing')return;
+    mobilePulseFeedback(err?'Pulse timed out. Try again.':response?.error||'PULSE SENT · SENTINEL PAUSED');
+  });
+}
+$('guardianPulse').addEventListener('pointerdown',e=>{
+  if(!['touch','pen'].includes(e.pointerType))return;
+  e.preventDefault();e.stopPropagation();pulseTouchAt=performance.now();
+  $('guardianPulse').setPointerCapture(e.pointerId);requestMobilePulse();
+},{passive:false});
+$('guardianPulse').addEventListener('click',e=>{
+  if(['touch','pen'].includes(e.pointerType)||performance.now()-pulseTouchAt<900){e.preventDefault();return;}
+  if(touchDevice&&e.detail===0)requestMobilePulse();else send('guardian:stun',{});
+});
 window.addEventListener('keydown',e=>{
  if(e.key.toLowerCase()!=='f'||e.repeat||state?.role!=='Guardian'||state.phase!=='playing'||!$('introScreen').hidden||document.querySelector('dialog[open]')||['INPUT','TEXTAREA'].includes(e.target.tagName))return;
  e.preventDefault();send('guardian:stun',{});
