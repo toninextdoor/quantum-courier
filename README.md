@@ -140,3 +140,8 @@ Failed premium parkour descents respawn the same damaged artifact. Recovery code
 Select a role before entry. Slots are reserved on the server; unavailable roles produce a clear error. Interactive lobby cards show avatars, names, roles, host/self markers and vacancies. Roles can change before launch and persist through replay. Host and Navigator are independent.
 
 See UPDATE.md for v4.0 progression, joystick and testing-profile details.
+
+
+## v4.1 profile photos and moderation
+
+Profile now includes a live bio editor and photo preview. Photos remain private until approved through the existing developer console; use Load pending photos to review. Approved photos appear in the header, profile, crew lobby and Friends. Removing a photo returns to the preset avatar. Existing DATABASE_URL and developer credentials are used; migrations are automatic. npm ci now installs sharp for validated image decoding/re-encoding. See ACCOUNTS.md for retention and access details.

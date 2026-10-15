@@ -1,5 +1,7 @@
-# Room 905 v4.0.1
+# Room 905 v4.1.0
 
-Original crew crowns: angelnextdoor and steve1234 receive a silver-blue OG DEV crown. toninextdoor receives an exclusive gold crown with amethyst gem, creator halo and FOUNDER label. Crowns display above authenticated avatars in the header, lobby, profile and friends, and above field-player characters in 3D. Guest callsigns never grant a crown; server-authenticated account identity determines the badge. These cosmetics confer no gameplay advantage or developer-console access.
+Skip Briefing moved below page navigation. Profile now has a live bio preview, saved moderated bio and photo uploader with square preview. Images decode and re-encode on the server (256px JPEG, metadata stripped); SVG/animation/oversize or corrupt files are rejected. Images persist in PostgreSQL. Pending images are private to the owner and authenticated developer reviewer; public avatars stay on a preset or previously approved photo until approval.
 
-Upload full contents preserving folders. No new settings or database migrations. /health shows 4.0.1. Visual playtest pending.
+Moderation: deterministic text filters reject common severe phrases, links/contact details and abusive profile text; chat profanity masks, duplicate/burst limits and host mutes remain. These are limited filters, not semantic AI moderation or a guarantee that all harmful content is caught. Photos require human review through Developer Console > Profile photo moderation. Review checks pending-photo revision to prevent approving a replacement accidentally. Existing DEV_USERNAME/DEV_PASSWORD apply; OG crowns alone grant no review access.
+
+Upload all contents. npm ci installs the added sharp image decoder; Node 24.x remains required. Existing DATABASE_URL is sufficient; profile/photo columns migrate automatically. No AI key or paid moderation API required. Visual/mobile and live migration testing still needed.

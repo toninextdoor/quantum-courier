@@ -3,7 +3,7 @@ const express = require('express');
 const {installAccounts}=require('./accounts');
 const {rewardXP}=require('./progression');
 const {installFriends}=require('./friends');
-const {moderateChat}=require('./moderation');
+const {moderateChat,filterText}=require('./moderation');
 const http = require('node:http');
 const path = require('node:path');
 const { randomUUID, randomInt, createHash, timingSafeEqual } = require('node:crypto');
@@ -158,12 +158,12 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.0.1', build:'room905-4.0.1-startup-fix' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.1.0', build:'room905-4.1.0-startup-fix' }));
   const ROLE_LIMITS={Navigator:1,Guardian:1,Scavenger:2};
   const roleAvailable=(room,role,except)=>Object.hasOwn(ROLE_LIMITS,role)&&room.players.filter(p=>p.id!==except&&p.role===role).length<ROLE_LIMITS[role];
   function roles(room){for(const p of room.players){p.input={};p.inputAt=0;}}
   function roster(room) {
-    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, difficulty:room.difficulty||'normal', phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar,progression }) => ({ id, name, role, avatar,progression })) });
+    io.to(room.code).emit('lobby', { code: room.code, host: room.players[0]?.id, difficulty:room.difficulty||'normal', phase: room.phase, notice: room.notice || '', players: room.players.map(({ id, name, role, avatar,portrait,bio,progression }) => ({ id, name, role, avatar,portrait,bio,progression })) });
   }
   function event(g, text, kind = 'info') { g.eventId++; g.event = text; g.eventKind = kind; }
   function cargoDamage(g, item, amount) {
@@ -317,7 +317,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
     roles(room); roster(room);
   }
   io.on('connection', socket => {
-    socket.emit('build', {version:'4.0.1'});
+    socket.emit('build', {version:'4.1.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -332,6 +332,8 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       if(!userOk||!passOk)return ack({error:'Invalid credentials.'});
       socket.data.devUntil=now+30*60000;ack({ok:true});
     });
+    socket.on('dev:photos',async(_data,ack)=>{if(typeof ack!=='function')return;if(!isDev(socket))return ack({error:'Developer session expired. Sign in again.'});try{const rows=await accounts.store?.photoQueue();ack({photos:(rows||[]).map(u=>({username:u.username,image:u.photo_pending,revision:digest(u.photo_pending).toString('hex')}))});}catch{ack({error:'Photo queue unavailable.'});}});
+    socket.on('dev:photo-review',async(data,ack)=>{if(typeof ack!=='function')return;if(!isDev(socket))return ack({error:'Developer session expired. Sign in again.'});if(!['approve','reject'].includes(data?.action))return ack({error:'Choose approve or reject.'});try{const rows=await accounts.store.photoQueue(),u=rows.find(u=>u.username===data.username&&digest(u.photo_pending).toString('hex')===data.revision);if(!u)return ack({error:'This photo changed. Refresh the queue.'});ack({ok:await accounts.store.reviewPhoto(u.username,u.photo_pending,data.action==='approve')});}catch{ack({error:'Photo review unavailable.'});}});
     socket.on('dev:logout',()=>{socket.data.devUntil=0;});
     let lastDev=-Infinity;
     socket.on('dev:action',(data,ack)=>{
@@ -392,6 +394,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       if(!socket.connected||socket.data.code)return reply({error:'Room request no longer available.'});
       const name = account?account.username:typeof data.name === 'string' ? data.name.trim().slice(0, 18) : '';
       if (!name) return reply({ error: 'Enter your callsign first.' });
+      if(!account&&filterText(name,18,{strict:true}).error)return reply({error:'Please choose an appropriate callsign without links or contact details.'});
       let room;
       if (data.create === true) {
         if (rooms.size >= 500) return reply({ error: 'Server full. Try again later.' });
@@ -408,7 +411,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       const chosen=typeof data.role==='string'?data.role:!room.players.some(p=>p.role==='Navigator')?'Navigator':roleAvailable(room,'Scavenger')?'Scavenger':'Guardian';
       if(!Object.hasOwn(ROLE_LIMITS,chosen)){if(!room.players.length)rooms.delete(room.code);return reply({error:'Choose Navigator, Guardian or Recovery.'});}
       if(!roleAvailable(room,chosen)){if(!room.players.length)rooms.delete(room.code);return reply({error:`${chosen==='Scavenger'?'Recovery':chosen} role is not available. Please choose another role.`});}
-      room.players.push({ id: socket.id, role:chosen, name, accountUsername:account?.username||null, avatar:account?.avatar||'amber', progression:account?accounts.publicUser(account).progression:null, input: {}, inputAt: 0 }); roles(room);
+      room.players.push({ id: socket.id, role:chosen, name, accountUsername:account?.username||null, avatar:account?.avatar||'amber', portrait:account?accounts.publicUser(account).portrait:null, bio:account?.bio||'', progression:account?accounts.publicUser(account).progression:null, input: {}, inputAt: 0 }); roles(room);
       socket.data.code = room.code; socket.join(room.code); reply({ ok: true }); roster(room);
     };
     socket.on('enter',enterRoom);

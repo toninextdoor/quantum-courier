@@ -43,3 +43,12 @@ Thirty-day HttpOnly SameSite=Lax sessions renew on account GET; the same browser
 Postgres automatically adds xp, frame and title fields and a unique per-round award ledger. A completed eligible team shift earns 50 base XP, up to 150 cargo XP, and 100 bonus XP on success. Shifts shorter than 30 seconds and developer-controlled rounds do not award XP. All signed-in roles earn equally, capped at level 20 (4750 XP); every 250 XP advances a level. Frames and titles are cosmetic only and are checked on the server when equipping.
 
 The exact normalized usernames toninextdoor, angelnextdoor and steve1234 are max-progression testing profiles. Existing passwords are preserved. Missing accounts must be registered normally; the code does not precreate accounts with passwords. Max progression never grants developer-console access. Remove names from progression.js TEST_USERS and the migration UPDATE when retiring testing profiles.
+
+
+## v4.1 profile editor and photo review
+
+Optional bios are 160 characters, stored in PostgreSQL and shown to the crew. Server code filters block common profanity, explicit abusive phrases, links and contact details. These limited filters do not detect every language or every harmful intent.
+
+Profile photos are cropped in-browser and decoded/re-encoded to a 256px JPEG with sharp on the server, stripping metadata. Only still JPEG/PNG/WebP input is accepted, with input size/pixel/concurrency limits. One pending and one approved image per account are stored in PostgreSQL, not Render's ephemeral disk. Pending images are accessible only through the owner's authenticated preview and the authenticated developer review queue. Approved image URLs are public; removing an image or deleting the account makes the old URL unavailable.
+
+To approve: open the existing developer console, sign in with DEV_USERNAME/DEV_PASSWORD, choose Load pending photos, then approve or reject each image. Review for nudity, violence, hate symbols, personal information and rights to the image. OG account names and founder crowns never grant reviewer privileges. No AI moderation provider or API key is configured.

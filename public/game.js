@@ -1,7 +1,7 @@
-import {bindJoystick} from '/joystick.mjs?v=4.0.1';
-import { trolleyLayout } from '/trolley-layout.js?v=4.0.1';
+import {bindJoystick} from '/joystick.mjs?v=4.1.0';
+import { trolleyLayout } from '/trolley-layout.js?v=4.1.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.0.1';
+import { checkBrowser } from '/self-check.js?v=4.1.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -181,7 +181,7 @@ function reset() {
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
 socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.0.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.0.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.0.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.1.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.1.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.1.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -192,11 +192,11 @@ socket.on('lobby', data => {
   const slots=[['Navigator',0],['Guardian',0],['Scavenger',0],['Scavenger',1]];
   $('players').replaceChildren(...slots.map(([role,index])=>{
     const player=data.players.filter(p=>p.role===role)[index],li=document.createElement('li');li.className='crewCard';li.dataset.role=role;
-    const badge=document.createElement('img');badge.src=`/assets/avatars/${player&&avatarColors[player.avatar]?player.avatar:'silver'}.svg`;badge.alt=player?`${player.name}'s avatar`:'Open crew slot';
+    const badge=document.createElement('img');badge.src=player?portraitURL(player):'/assets/avatars/silver.svg';badge.alt=player?`${player.name}'s avatar`:'Open crew slot';
     const name=document.createElement('strong');name.textContent=player?player.name:'Available';
     const roleLabel=document.createElement('span');roleLabel.className='crewRole';roleLabel.textContent=roleNames[role]+(role==='Scavenger'?` ${index+1}`:'');
     const note=document.createElement('small');note.textContent=player?[player.id===socket.id?'YOU':'',player.id===data.host?'HOST':''].filter(Boolean).join(' · ')||'RESERVED':roleHints[role];
-    li.append(crownedAvatar(badge,player?.progression?.heritage),roleLabel,name,note);if(player?.progression?.heritage)li.append(heritageLabel(player.progression.heritage));if(player?.progression){badge.dataset.frame=player.progression.frame;const rank=document.createElement('small');rank.textContent=`${player.progression.testing?'TEST · ':''}LV ${player.progression.level} · ${player.progression.rewards.find(r=>r.id===player.progression.title)?.name||'New Arrival'}`;li.append(rank);}
+    li.append(crownedAvatar(badge,player?.progression?.heritage),roleLabel,name,note);if(player?.bio){const bio=document.createElement('p');bio.className='crewBio';bio.textContent=player.bio;li.append(bio);}if(player?.progression?.heritage)li.append(heritageLabel(player.progression.heritage));if(player?.progression){badge.dataset.frame=player.progression.frame;const rank=document.createElement('small');rank.textContent=`${player.progression.testing?'TEST · ':''}LV ${player.progression.level} · ${player.progression.rewards.find(r=>r.id===player.progression.title)?.name||'New Arrival'}`;li.append(rank);}
     if(player?.id===socket.id)li.classList.add('yourCard');
     if(!player){li.classList.add('openSlot');const button=document.createElement('button');button.className='ghost';button.textContent='Take this role';button.onclick=()=>send('lobby:role',{role});li.append(button);}
     return li;
@@ -675,7 +675,7 @@ function drawAvatars(){
 function showAccount(user){
  accountUser=user;renderProgression(user);refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
  $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';
- $('profileName').textContent=user?`Signed in as ${user.username}`:'';
+ $('profileName').textContent=user?`Signed in as ${user.username}`:'';if(user){$('profileBio').value=user.bio||'';updateBioPreview();$('photoStatus').textContent=photoStatusText(user.photoStatus);$('removePhoto').disabled=user.photoStatus==='none';if(user.photoStatus==='pending'){$('photoDraft').src='/api/account/photo-preview?t='+Date.now();$('photoDraft').hidden=false;}else if(!photoDraftData){$('photoDraft').hidden=true;}}
  $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
  drawAvatars();
 }
@@ -686,7 +686,7 @@ async function loadAccount(){
 }
 async function accountAction(action,body={}){
  if(accountBusy)return;if(lobby){$('accountStatus').textContent='Leave your crew before changing your account or avatar.';return;}accountBusy=true;accountEpoch++;$('accountStatus').textContent='Saving…';
- try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});socket.disconnect();socket.connect();}
+ try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});if(['register','login','logout','reset','delete'].includes(action)){socket.disconnect();socket.connect();}}
  catch(e){$('accountStatus').textContent=e.message;}finally{accountBusy=false;}
 }
 $('closeAccount').onclick=()=>$('regularDialog').close();
@@ -703,7 +703,7 @@ socket.on('progression:update',data=>{if(data.user)showAccount(data.user);$('res
 function refreshHeaderIdentity(user=accountUser){
  $('headerUsername').textContent=user?.username||$('name').value.trim()||'Guest';
  $('guestFace').hidden=!!user;$('headerAvatar').hidden=!user;$('headerPortrait').hidden=!user;const h=user?.progression?.heritage;setCrown($('headerCrown'),h);$('headerPortrait').dataset.heritage=h?.kind||'';$('headerHeritage').hidden=!h;$('headerHeritage').textContent=h?.label||'';$('headerHeritage').dataset.heritage=h?.kind||'';$('headerHeritage').title=h?.detail||'';
- if(user)$('headerAvatar').src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;
+ if(user)$('headerAvatar').src=portraitURL(user);
 }
 $('name').addEventListener('input',()=>refreshHeaderIdentity());
 function applyTheme(value){
@@ -777,7 +777,7 @@ socket.on('friend:invitation',invite=>{
  pendingInvites.set(invite.id,invite);$('inviteNotice').textContent=`${invite.from} invited you to lobby ${invite.code}.`;$('friendInviteBanner').hidden=false;
  if($('friendsDialog').open)loadFriends();
 });
-function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=`/assets/avatars/${avatarIds.includes(user.avatar)?user.avatar:'amber'}.svg`;image.alt='';const name=document.createElement('strong');name.textContent=user.username;const identity=document.createElement('div');identity.className='friendIdentity';identity.append(name);if(user.heritage)identity.append(heritageLabel(user.heritage));if(typeof user.online==='boolean'){const status=document.createElement('span');status.className=user.online?'presence online':'presence offline';status.textContent=user.online?'Online':'Offline';identity.append(status);}row.append(crownedAvatar(image,user.heritage),identity);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;if(label==='Invite'&&user.online===false){b.disabled=true;b.title='Your friend needs the game open.';}row.append(b);}return row;}
+function friendRow(user,actions){const row=document.createElement('div');row.className='friendRow';const image=document.createElement('img');image.src=portraitURL(user);image.title=user.bio||'';image.alt='';const name=document.createElement('strong');name.textContent=user.username;const identity=document.createElement('div');identity.className='friendIdentity';identity.append(name);if(user.heritage)identity.append(heritageLabel(user.heritage));if(typeof user.online==='boolean'){const status=document.createElement('span');status.className=user.online?'presence online':'presence offline';status.textContent=user.online?'Online':'Offline';identity.append(status);}row.append(crownedAvatar(image,user.heritage),identity);for(const [label,fn]of actions){const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=fn;if(label==='Invite'&&user.online===false){b.disabled=true;b.title='Your friend needs the game open.';}row.append(b);}return row;}
 async function friendAction(action,username){try{const r=await fetch('/api/friends/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username})}),d=await r.json();if(!r.ok)throw Error(d.error);$('friendsStatus').textContent=action==='request'?'Friend request sent.':'Friends updated.';await loadFriends(true);}catch(e){$('friendsStatus').textContent=e.message;}}
 function inviteFriend(username){socket.timeout(5000).emit('friend:invite',{username},(err,r)=>{$('friendsStatus').textContent=err?'Invite timed out.':r.error||'Lobby invitation sent.';});}
 function joinInvitation(id){if(lobby){$('friendsStatus').textContent='Leave your current crew before joining this invitation.';return;}socket.timeout(5000).emit('friend:join',{id},(err,r)=>{if(err||r.error){$('friendsStatus').textContent=err?'Join timed out.':r.error;return;}pendingInvites.delete(id);$('friendInviteBanner').hidden=true;$('friendsDialog').close();});}
@@ -819,7 +819,7 @@ $('changeRole').onclick=()=>send('lobby:role',{role:$('lobbyRole').value});
 function renderProgression(user){
  const p=user?.progression;$('headerLevel').hidden=!p;if(!p)return;
  $('levelLabel').textContent=`LV ${p.level} / ${p.maxLevel}`;$('levelFill').style.width=(p.current/p.required*100)+'%';$('profileXP').style.width=(p.current/p.required*100)+'%';
- const h=p.heritage;const portrait=document.createElement('img');portrait.src=`/assets/avatars/${user.avatar}.svg`;portrait.alt='Your profile avatar';portrait.width=64;portrait.height=64;portrait.dataset.frame=p.frame;$('profileEmblem').replaceChildren(crownedAvatar(portrait,h));if(h)$('profileEmblem').append(heritageLabel(h));
+ const h=p.heritage;const portrait=document.createElement('img');portrait.src=portraitURL(user);portrait.alt='Your profile avatar';portrait.width=64;portrait.height=64;portrait.dataset.frame=p.frame;$('profileEmblem').replaceChildren(crownedAvatar(portrait,h));if(h)$('profileEmblem').append(heritageLabel(h));
  $('progressionTitle').textContent=`Level ${p.level}${p.testing?' · TEST PROFILE':''}`;$('xpDetails').textContent=p.level===p.maxLevel?`${p.xp} XP · Maximum level`:`${p.xp} total XP · ${p.current} / ${p.required} to next level`;
  $('headerAvatar').dataset.frame=p.frame;
  $('unlockList').replaceChildren(...p.rewards.map(r=>{const row=document.createElement('div');row.className='unlockRow';const text=document.createElement('span');text.textContent=`${r.name} · ${r.kind} · LV ${r.level}`;const b=document.createElement('button');b.className='secondary';const equipped=p[r.kind]===r.id;b.textContent=equipped?'Equipped':r.unlocked?'Equip':'Locked';b.disabled=!r.unlocked||equipped;b.onclick=()=>accountAction('equip',{kind:r.kind,id:r.id});row.append(text,b);return row;}));
@@ -828,3 +828,21 @@ function renderProgression(user){
 function setCrown(icon,h){icon.hidden=!h;icon.dataset.heritage=h?.kind||'';icon.setAttribute('role','img');icon.setAttribute('aria-label',h?`${h.label} crown`:'');icon.title=h?.detail||'';}
 function crownedAvatar(image,h){const wrap=document.createElement('span');wrap.className='crownedAvatar';wrap.dataset.heritage=h?.kind||'';wrap.append(image);if(h){const crown=document.createElement('span');crown.className='crownIcon';setCrown(crown,h);wrap.append(crown);}return wrap;}
 function heritageLabel(h){const badge=document.createElement('span');badge.className='heritageTag';badge.dataset.heritage=h.kind;badge.textContent=h.label;badge.title=h.detail;return badge;}
+
+function portraitURL(user){return typeof user?.portrait==='string'&&/^\/api\/portraits\/[a-f0-9-]{36}$/.test(user.portrait)?user.portrait:`/assets/avatars/${avatarIds.includes(user?.avatar)?user.avatar:'amber'}.svg`;}
+let photoDraftData=null;
+function updateBioPreview(){const value=$('profileBio').value;$('bioCount').textContent=`${value.length} / 160`;$('bioPreview').textContent=value||'Your next recovery story starts here.';}
+function photoStatusText(status){return ({none:'Using your preset badge.',pending:'Pending review · only you and the moderator can see this upload.',approved:'Photo approved · visible to your crew and friends.',rejected:'Photo not approved. Choose another image or use a preset.'})[status]||'Choose a profile photo.';}
+$('profileBio').addEventListener('input',updateBioPreview);
+$('saveProfile').onclick=()=>accountAction('profile',{bio:$('profileBio').value});
+$('photoFile').addEventListener('change',async()=>{
+ const file=$('photoFile').files[0];photoDraftData=null;$('uploadPhoto').disabled=true;if(!file)return;
+ if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024){$('photoStatus').textContent='Choose a JPEG, PNG or WebP under 8 MB.';return;}
+ const url=URL.createObjectURL(file);const image=new Image();
+ try{await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d');const side=Math.min(image.naturalWidth,image.naturalHeight);ctx.drawImage(image,(image.naturalWidth-side)/2,(image.naturalHeight-side)/2,side,side,0,0,256,256);photoDraftData=canvas.toDataURL('image/jpeg',.85);$('photoDraft').src=photoDraftData;$('photoDraft').hidden=false;$('photoStatus').textContent='Square preview · ready to submit for review.';$('uploadPhoto').disabled=false;}catch{$('photoStatus').textContent='This photo could not be opened. Try a smaller JPEG.';}finally{URL.revokeObjectURL(url);}
+});
+$('uploadPhoto').onclick=async()=>{if(!photoDraftData)return;$('uploadPhoto').disabled=true;await accountAction('photo',{image:photoDraftData});photoDraftData=null;};
+$('removePhoto').onclick=async()=>{photoDraftData=null;$('photoFile').value='';$('photoDraft').hidden=true;await accountAction('photo-remove');};
+$('refreshPhotos').onclick=()=>{
+ socket.timeout(8000).emit('dev:photos',{},(err,result)=>{if(err||result?.error){$('devStatus').textContent=err?'Photo queue timed out.':result.error;return;}$('photoQueue').replaceChildren(...result.photos.map(p=>{const card=document.createElement('div');card.className='photoReview';const img=document.createElement('img');img.src=p.image;img.alt='Pending image from '+p.username;const name=document.createElement('strong');name.textContent=p.username;card.append(img,name);for(const action of ['approve','reject']){const b=document.createElement('button');b.textContent=action==='approve'?'Approve':'Reject';b.onclick=()=>{b.disabled=true;socket.timeout(8000).emit('dev:photo-review',{username:p.username,revision:p.revision,action},(error,r)=>{if(error||r?.error||!r?.ok){b.disabled=false;$('devStatus').textContent=error?'Review timed out.':r?.error||'Photo changed. Refresh the queue.';}else card.remove();});};card.append(b);}return card;}));if(!result.photos.length)$('photoQueue').textContent='No pending photos.';});
+};
