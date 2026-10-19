@@ -269,3 +269,27 @@ test('suit integrity absorbs one EM hit, protects between hits and restores afte
  g.deadline=0;await delay(100);await request(nav,'start',{});assert.equal(game.rooms.get(code).game.actors[0].health,100,'new round restores health');
  }finally{cs.forEach(s=>s.disconnect());await game.close();}
 });
+
+test('temporary transport loss pauses the shift and recovers the same crew identity and cargo',async()=>{
+ const game=createGameServer({disconnectGraceMs:2000});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const clients=[];
+ try{
+  const url=`http://127.0.0.1:${game.server.address().port}`;
+  for(let i=0;i<2;i++){const c=io(url,{transports:['websocket'],reconnectionDelay:250,reconnectionDelayMax:250,randomizationFactor:0});clients.push(c);await next(c,'connect');}
+  const [nav,runner]=clients,l=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Guide'});const code=(await l).code;await request(runner,'enter',{code,name:'Runner'});await request(nav,'start',{});await next(runner,'state');
+  const room=game.rooms.get(code),g=room.game,id=runner.id,a=g.actors[0],item=g.items[0];a.carrying=item.id;item.carrier=id;a.gripUntil=performance.now()+1500;
+  game.io.sockets.sockets.get(id).data.devUntil=performance.now()+10000;
+  const resumed=next(runner,'connect'),paused=next(nav,'state');runner.io.engine.close();
+  let packet=await paused;while(!packet.paused)packet=await next(nav,'state');const time=packet.remaining,grip=packet.actors[0].gripRemaining;
+  await delay(100);const frozen=await next(nav,'state');assert.equal(frozen.remaining,time);assert.equal(frozen.actors[0].gripRemaining,grip);
+  await resumed;assert.equal(runner.recovered,true);assert.equal(runner.id,id);assert.equal(room.phase,'playing');assert.equal(room.pauseAt,null);assert.equal(a.carrying,item.id);assert.equal(game.io.sockets.sockets.get(id).data.devUntil,0);
+  const state=await next(runner,'state');assert.equal(state.paused,false);assert.ok(state.remaining>time-.3);
+ }finally{clients.forEach(c=>c.disconnect());await game.close();}
+});
+test('expired recovery releases its slot and returns the remaining crew to the lobby',async()=>{
+ const game=createGameServer({disconnectGraceMs:120});await new Promise(r=>game.server.listen(0,'127.0.0.1',r));const clients=[];
+ try{
+  const url=`http://127.0.0.1:${game.server.address().port}`;for(let i=0;i<2;i++){const c=io(url,{transports:['websocket'],reconnection:false});clients.push(c);await next(c,'connect');}
+  const [nav,runner]=clients,l=next(nav,'lobby');await request(nav,'enter',{create:true,name:'Guide'});const code=(await l).code;await request(runner,'enter',{code,name:'Runner'});await request(nav,'start',{});await next(runner,'state');runner.io.engine.close();await delay(220);
+  const room=game.rooms.get(code);assert.equal(room.phase,'lobby');assert.equal(room.players.length,1);assert.equal(room.game,null);assert.equal(room.pauseAt,null);
+ }finally{clients.forEach(c=>c.disconnect());await game.close();}
+});

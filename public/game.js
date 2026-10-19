@@ -1,9 +1,10 @@
-import {drawCrop} from '/photo-crop.mjs?v=4.2.1';
-import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.2.1';
-import {bindJoystick} from '/joystick.mjs?v=4.2.1';
-import { trolleyLayout } from '/trolley-layout.js?v=4.2.1';
+import {bindTrailer} from '/trailer.mjs?v=4.3.1';
+import {drawCrop} from '/photo-crop.mjs?v=4.3.1';
+import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.3.1';
+import {bindJoystick} from '/joystick.mjs?v=4.3.1';
+import { trolleyLayout } from '/trolley-layout.js?v=4.3.1';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.2.1';
+import { checkBrowser } from '/self-check.js?v=4.3.1';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -52,7 +53,7 @@ async function dismissIntro(){ if($('introScreen').hidden)return;const firstExit
 $('enterIntro').onclick=$('skipIntro').onclick=dismissIntro;
 const briefingPages=[
  {kicker:'01 / THE ASSIGNMENT',title:'Recover the room.<br>Return together.',text:'The hotel has commissioned your crew to recover abandoned property from the sealed Room 905. The suite changes each time you enter.',facts:['2–4 players. Create a crew and share its four-letter code.','Recover $600 of property within 3 minutes.','Return valuables to the green hallway extraction pad.'],chapter:'MISSION BRIEF',art:'door'},
- {kicker:'02 / YOUR CREW',title:'Know your role.<br>Work together.',text:'Choose your role before joining. One Navigator, one Guardian and two Recovery slots are available. Launch needs a Navigator and at least one Recovery; Guardian is optional.',facts:['Navigator — see EM Flux Faults, the Sentinel and valuables on the hologram. Click the floor to guide your crew.','Guardian — see the Sentinel, but not gaps. F / SIGNAL PULSE pauses it for 3 seconds within 6m and a clear path; recharge takes 12 seconds.','Recovery — follow command, collect valuables and return them to the trolley. WASD / touch arrows move; mouse / swipe turns your view.'],chapter:'CREW ROLES',art:'views'},
+ {kicker:'02 / YOUR CREW',title:'Know your role.<br>Work together.',text:'Choose your role before joining. One Navigator, one Guardian and two Recovery slots are available. Launch needs a Navigator and at least one Recovery; Guardian is optional.',facts:['Navigator — see EM Flux Faults, the Sentinel and valuables on the hologram. Click the floor to guide your crew.','Guardian — see the Sentinel, but not gaps. F / SIGNAL PULSE pauses it for 3 seconds within 6m and a clear path; recharge takes 12 seconds.','Recovery — follow command, collect valuables and return them to the trolley. WASD / mobile joystick moves; mouse / swipe turns your view.'],chapter:'CREW ROLES',art:'views'},
  {kicker:'03 / HANDLE WITH CARE',title:'Pick it up.<br>Bring it back.',text:'Press E or GRAB beside a valuable, then carry it to extraction. Delivery is automatic on the green pad.',facts:['Tap E / GRIP at least every 2 seconds to keep hold. Q / DROP releases it. Letting go costs 8% condition.','Walk with property: sprinting into walls costs 12% condition. Less condition means less value.','Optional: Space / JUMP reaches a $450 artifact. Release and press again for each platform jump.'],chapter:'PROPERTY RECOVERY',art:'cargo'},
  {kicker:'04 / KEEP THE LINK',title:'Trust the voice.<br>Watch the signals.',text:'The Sentinel is a security automaton. Red screen edges and a quicker heartbeat warn when it is near; enable sound to hear the cue.',facts:['The Navigator sees Flux Faults: damaged power circuits scramble sensors. The same fields force the Sentinel robot to reboot for 4 seconds.','Suit integrity: two EM hits or one Sentinel hit trigger recovery. A first EM hit leaves 50%. Recovery costs 5 seconds for EM or 10 for Sentinel on Normal.','After a 3.5-second cause screen, you reconnect at the hallway with full integrity. Keep recovering until you reach the quota.'],chapter:'SIGNAL AWARENESS',art:'signal'}
 ];
@@ -86,7 +87,12 @@ let lobbyBedStop=null;
 let swipe = null, soundOn = true, audio = null, ambience = null, audioTestUntil = 0, master = null, analyser = null, audioPending = false, audioWave = null;
 const raycaster = new THREE.Raycaster(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const mint = 0xb9f8bd, cyan = 0x64ddd4, amber = 0xfac875, red = 0xff666e;
-function showError(text = '') { $('error').textContent = text; $('error').hidden = !text; }
+let errorTimer;
+function showError(text = '', persistent = false) {
+  clearTimeout(errorTimer); $('errorText').textContent=text; $('error').hidden=!text;
+  if(text&&!persistent)errorTimer=setTimeout(()=>showError(),6000);
+}
+$('dismissError').onclick=()=>showError();
 function send(event, data) {
   if(!serverCompatible)return showError('Client/server versions do not match. Deploy the full update and reload.');
   showError(); if (!socket.connected) return showError('Connection unavailable. Wait for reconnection.');
@@ -128,6 +134,12 @@ $('sound').onclick = async () => {
   if(!soundOn)stopMenuSounds();$('sound').textContent=soundOn?(audio?.state==='running'?'SOUND ON':'ENABLE SOUND'):'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));if(homeAudioAllowed())playMenuSound('click');
 };
 let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
+const trailerPlayer=bindTrailer({dialog:$('trailerDialog'),video:$('trailerVideo'),button:$('watchTrailer'),closeButton:$('closeTrailer'),status:$('trailerStatus'),
+ canOpen:()=>{if(state?.phase==='playing'||lobby?.phase==='playing'){showError('Watch the trailer between shifts.');return false;}return document.documentElement.dataset.stage==='app'&&$('introScreen').hidden;},
+ isMuted:()=>!soundOn,
+ onOpen:()=>{release();document.exitPointerLock?.();$('optionsMenu').open=false;document.body.classList.add('watchingTrailer');stopMenuSounds();updateLobbyAmbience();},
+ onClose:()=>{document.body.classList.remove('watchingTrailer');updateLobbyAmbience();}
+});
 $('aboutButton').onclick=()=>{release();document.exitPointerLock?.();$('aboutDialog').showModal();};
 $('closeAbout').onclick=()=>$('aboutDialog').close();
 function openProfile(){release();document.exitPointerLock?.();$('optionsMenu').open=false;$('regularDialog').classList.toggle('profilePage',!!accountUser);$('regularDialog').showModal();loadAccount();}
@@ -175,10 +187,11 @@ $('copyCode').onclick = async () => { try { await navigator.clipboard.writeText(
 $('helpButton').onclick = () => { release(); document.exitPointerLock?.(); $('helpDialog').showModal(); };
 $('closeHelp').onclick = () => $('helpDialog').close();
 $('chatInput').addEventListener('focus', release);
-$('chatForm').onsubmit = e => { e.preventDefault(); if ($('chatInput').value.trim()) { socket.timeout(3000).emit('chat', $('chatInput').value,(err,r)=>{if(err||r?.error)showError(err?'Chat unavailable.':r.error);}); $('chatInput').value = ''; } };
+$('chatInput').addEventListener('input',()=>showError());
+$('chatForm').onsubmit = e => { e.preventDefault(); if ($('chatInput').value.trim()) { socket.timeout(3000).emit('chat', $('chatInput').value,(err,r)=>{if(err||r?.error)showError(err?'Chat unavailable.':r.error);else showError();}); $('chatInput').value = ''; } };
 document.querySelectorAll('[data-command]').forEach(b => b.onclick = () => socket.emit('guide', { command: b.dataset.command }));
 function reset() {
-  release(); $('pulseFeedback').hidden=true;clearTimeout(pulseFeedbackTimer);pulsePending=false; $('resetScreen').hidden=true; threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
+  $('reconnectScreen').hidden=true;release(); $('pulseFeedback').hidden=true;clearTimeout(pulseFeedbackTimer);pulsePending=false; $('resetScreen').hidden=true; threatLevel=0; $('threatVignette').style.opacity='0'; document.exitPointerLock?.(); state = previous = lobby = null; currentRound = null;
   $('front').hidden = false; $('entry').hidden = false; $('lobby').hidden = true; $('game').hidden = true; $('result').hidden = true;
   $('footer').hidden = false; document.body.classList.remove('inGame'); $('chatLog').replaceChildren();
   updateAmbience();
@@ -186,11 +199,17 @@ function reset() {
 }
 document.querySelectorAll('.leave').forEach(b => b.onclick = () => { socket.emit('leave'); reset(); });
 socket.on('left', reset);
-socket.on('connect', () => { $('connection').textContent = '● ONLINE'; });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.2.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.2.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.2.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`);} });
-socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();reset(); $('connection').textContent = 'RECONNECTING'; showError('Connection lost. Rejoin with your crew’s code once connected. The active shift returns to the lobby.'); });
+socket.on('connect', () => {
+  $('connection').textContent = '● ONLINE';
+  if(lobby&&!socket.recovered){reset();showError('Your previous session expired. Rejoin using the crew code.');}
+  else showError();
+  $('reconnectScreen').hidden=true;
+});
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.3.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.3.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.3.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
+socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();release(); $('connection').textContent = 'RECONNECTING';if(lobby){$('reconnectScreen').hidden=false;$('reconnectMessage').textContent='Reconnecting your link… Your crew slot is held for up to 15 seconds. Keep this tab open.';} });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
+  if(data.phase==='lobby')$('reconnectScreen').hidden=true;
   lobby = data;updateLobbyAmbience(); $('entry').hidden = true; $('lobby').hidden = data.phase !== 'lobby';
   $('roomCode').textContent = data.code; $('roomTag').textContent = data.code;
   $('count').textContent = `${data.players.length} / 4`;
@@ -224,6 +243,7 @@ socket.on('chat', data => {
   $('chatLog').append(line); while ($('chatLog').children.length > 50) $('chatLog').firstChild.remove(); $('chatLog').scrollTop = $('chatLog').scrollHeight; tone(700, 0.06, 'sine', 0.025);
 });
 socket.on('world', data => {
+  trailerPlayer.close({restoreFocus:false});
   stopMenuSounds();if(lobbyBedStop){lobbyBedStop();lobbyBedStop=null;}
   world = data;
   const nav = lobby?.players.find(p => p.id === socket.id)?.role === 'Navigator';
@@ -231,7 +251,10 @@ socket.on('world', data => {
   catch (e) { console.error(e); $('renderError').hidden = false; showError('3D rendering could not start. Try a browser with WebGL enabled.'); }
 });
 socket.on('state', data => {
+  if(data.phase==='playing')trailerPlayer.close({restoreFocus:false});
   previous = state; state = data; received = performance.now();
+  $('reconnectScreen').hidden=!data.paused;
+  if(data.paused){release();$('reconnectMessage').textContent='Waiting for a teammate’s connection. Shift timer, cargo and Sentinel are paused for up to 15 seconds.';}
   $('resetScreen').hidden=!data.respawn;
   if(data.respawn){
     if(!previous?.respawn)release();
@@ -582,9 +605,9 @@ function onMapClick(e) {
   const point=new THREE.Vector3();const tablePlane=new THREE.Plane(new THREE.Vector3(0,1,0),-1.13);if(raycaster.ray.intersectPlane(tablePlane,point)&&hologram){hologram.updateMatrixWorld(true);hologram.worldToLocal(point);socket.emit('guide',{x:point.x,z:point.z});}
 }
 const mapping={' ':'jump',w:'forward',ArrowUp:'forward',s:'back',ArrowDown:'back',a:'left',d:'right',Shift:'sprint'};
-function canTouchPlay(){return state?.phase==='playing'&&state.role!=='Navigator'&&!state.respawn&&socket.connected&&$('introScreen').hidden&&!document.querySelector('dialog[open]');}
+function canTouchPlay(){return state?.phase==='playing'&&!state.paused&&state.role!=='Navigator'&&!state.respawn&&socket.connected&&$('introScreen').hidden&&!document.querySelector('dialog[open]');}
 function input() {
-  if(!state||state.role==='Navigator'||!$('introScreen').hidden||state.respawn||state.phase!=='playing'||!socket.connected)return;
+  if(!state||state.paused||state.role==='Navigator'||!$('introScreen').hidden||state.respawn||state.phase!=='playing'||!socket.connected)return;
   const held=new Set([...keys].map(k=>mapping[k]).concat([...touches.values()]));
   socket.emit('input',{forward:Math.max(-1,Math.min(1,stickZ+Number(held.has('forward'))-Number(held.has('back')))),strafe:Math.max(-1,Math.min(1,stickX+Number(held.has('right'))-Number(held.has('left')))),yaw,jump:held.has('jump')||performance.now()<jumpUntil,sprint:held.has('sprint')});
   document.querySelectorAll('[data-move]').forEach(b=>{const active=held.has(b.dataset.move);b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
@@ -592,7 +615,7 @@ function input() {
 function release(){movementStick?.release();stickX=stickZ=0;jumpUntil=0;keys.clear();touches.clear();swipe=null;input();document.querySelectorAll('[data-move]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false');});}
 window.addEventListener('keydown',e=>{
   const key=e.key.length===1?e.key.toLowerCase():e.key;
-  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn)return;
+  if(['INPUT','TEXTAREA'].includes(e.target.tagName)||($('trailerDialog').open||$('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)||state?.phase!=='playing'||state.role==='Navigator'||!$('introScreen').hidden||state.respawn||state.paused)return;
   if(mapping[key]||['ArrowLeft','ArrowRight','e','q'].includes(key)){
     e.preventDefault();if(key===' '&&!e.repeat)jumpUntil=performance.now()+150;keys.add(key);if(key==='e'&&!e.repeat)socket.emit('interact');if(key==='q'&&!e.repeat)socket.emit('cargo:drop');input();
   }
@@ -644,7 +667,7 @@ function frame(now) {
     setTimeout(()=>tone(155,.16,'triangle',.06+heartbeatLevel*.12,105),160);
     lastHeartbeat=now;
   }
-  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
+  if(!nav&&state.phase==='playing'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!($('trailerDialog').open||$('helpDialog').open||$('devDialog').open||$('regularDialog').open||$('aboutDialog').open||$('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)){yaw+=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*dt*1.8;}
   yaw=((yaw%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const me=state.actors.find(a=>a.id===socket.id);
   for(const a of state.actors){const mesh=actors.get(a.id);if(!mesh)continue;const old=previous?.actors.find(p=>p.id===a.id),pos=interpolate(now,a,old);mesh.position.set(pos.x,pos.y||0,pos.z);mesh.rotation.y=-a.yaw;mesh.scale.y=1+(a.speed>.1?Math.sin(now*.014)*.025:0);}
@@ -725,7 +748,7 @@ applyTheme(document.documentElement.dataset.theme);
 const optionsMenu=$('optionsMenu');
 document.addEventListener('click',e=>{if(!optionsMenu.contains(e.target))optionsMenu.open=false;});
 optionsMenu.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();optionsMenu.open=false;optionsMenu.querySelector('summary').focus();}});
-for(const id of ['replayBriefing','aboutButton','regularSignIn','deviceReopen','friendsButton','disclosureInfo'])$(id).addEventListener('click',()=>{optionsMenu.open=false;});
+for(const id of ['watchTrailer','replayBriefing','aboutButton','regularSignIn','deviceReopen','friendsButton','disclosureInfo'])$(id).addEventListener('click',()=>{optionsMenu.open=false;});
 optionsMenu.addEventListener('toggle',()=>{if(optionsMenu.open){release();document.exitPointerLock?.();}});
 
 // Mobile pulse is independent of held movement/look pointers. Feedback never shifts layout.
@@ -869,7 +892,7 @@ $('refreshPhotos').onclick=()=>{
 
 function updateLobbyAmbience(){const allowed=homeAudioAllowed()&&document.documentElement.dataset.stage==='app'&&$('introScreen').hidden&&lobby?.phase!=='playing'&&audio?.state==='running';if(allowed&&!lobbyBedStop)lobbyBedStop=startLobbyAmbience(audio,master);else if(!allowed&&lobbyBedStop){lobbyBedStop();lobbyBedStop=null;}}
 let menuSoundStops=[],lastMenuClick=-Infinity;
-function homeAudioAllowed(){return soundOn&&!document.hidden&&!document.body.classList.contains('inGame')&&state?.phase!=='playing';}
+function homeAudioAllowed(){return soundOn&&!document.hidden&&!document.body.classList.contains('watchingTrailer')&&!document.body.classList.contains('inGame')&&state?.phase!=='playing';}
 function stopMenuSounds(){menuSoundStops.forEach(stop=>stop());menuSoundStops=[];}
 function playMenuSound(kind){if(!homeAudioAllowed()||audio?.state!=='running')return;if(kind==='entrance')stopMenuSounds();menuSoundStops.push(playUISound(kind,audio,master));if(menuSoundStops.length>12)menuSoundStops.shift()();}
 document.addEventListener('click',async e=>{

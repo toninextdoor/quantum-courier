@@ -1,58 +1,28 @@
-# Room 905 — contest review
+# Room 905 — submission review, v4.3.0
 
-Reviewed October 12, 2026 against the two supplied text attachments. They are identical copies of the Handshake AI Skills Studio × OpenAI Multiplayer Game Challenge Official Rules. This is a project assessment, not organizer approval or a determination of your personal eligibility.
+Assessment against the challenge brief, Code of Conduct and official rules supplied by the creator. This is not organizer approval or a guarantee of eligibility or winning.
 
-## Finding
+| Requirement | Current evidence / remaining action |
+|---|---|
+| Multiplayer across devices | 2–4-player Socket.io rooms; creator reports successful desktop and mobile playtests. Retest the deployed release. |
+| Clear rules | Interactive briefing, role selection, controls, difficulty, quota and timer. Navigator guides; Recovery retrieves authorized property; optional Guardian pauses the Sentinel. |
+| Reachable live game | Existing Render URL; confirm deployment version 4.3.0 in /health and open in a private browser window. Production has not been independently verified in this update. |
+| Built with challenge tool | Developed and iterated with ChatGPT Work. Describe your actual design, testing and development contributions truthfully. |
+| Original content / asset rights | Fictional GTA lakeshore hotel, original geometry and synthesized sound. No OVO, Drake, BMW or R.E.P.O. branding, recordings or claimed affiliations. Verify rights to supplied logo, final cover and any future uploads. |
+| Appropriate content | Authorized hotel recovery; non-graphic robot sensor interference; no weapons, blood or injury depiction. Chat filters/rate limits and manual public-photo approval reduce abuse but cannot guarantee all content is safe. |
+| Honest accounts and judging | The three maxed TEST game accounts are cosmetic test profiles, not extra contest entries. Keep developer access private; demonstrate normal gameplay. Do not manipulate judging or use multiple Handshake identities for advantage. |
+| Submission | Supply title, final cover, accurate description and playable URL through the mission. Submit yourself. |
 
-No apparent conflict was found between the current game and the supplied official-rules text. The fictional hotel-recovery premise is not prohibited in that text. The Challenge Code of Conduct was subsequently supplied and reviewed. Applicable OpenAI terms were not included. Personal eligibility and organizer acceptance remain outside this source-code assessment.
+The supplied official rules give October 30, 2026, 11:59 p.m. Pacific as the deadline. Confirm personal eligibility, age, eligible location and Handshake account requirements directly against the complete entry rules. Read the promotional rights and public-information terms before submitting. A disclosure does not override content or intellectual property rules.
 
-## Project requirements and evidence
+Execution, creativity, value/usefulness and polish/thoughtfulness each carry 25%. Prioritize a working deployment, concise instructions, a clean cover and evidence of cross-device cooperation. Additional features alone do not establish competitive ranking.
 
-| Requirement | Current project | Assessment |
-|---|---|---|
-| Built with OpenAI through the multiplayer mission | Built and iterated with ChatGPT Work, with source and tests | Consistent with the stated entry route; describe your own contribution truthfully |
-| At least two players on separate devices (mission brief supplied earlier) | Socket.io rooms with 2–4 players; separate browser clients and real-device playtests reported by the creator | Meets the design requirement; retest the deployed hotel build before submission |
-| Rules understandable without the creator explaining them (mission brief) | Lobby briefing, controls, role explanations, HUD and Rules dialog | Implemented |
-| Reachable playable URL (mission brief) | Existing Render Web Service | Hosting exists; upload/deploy v2.6.0 and check it in a private window |
-| Required submission materials | Title Room 905; draft description below; cover-art slot; existing playable URL | Final cover and manual submission remain outstanding |
-| No mass/script/macro/automated-device entries | This work builds and tests the game; it does not submit entries | Submit through Handshake yourself; automated game tests are not automated contest entries |
-| Compliance with Challenge Code of Conduct and OpenAI terms | Code of Conduct reviewed; applicable OpenAI terms not included | Content revised; no guarantee of organizer acceptance |
+## Final practical checks
 
-## Entry requirements you must confirm
+1. Use ordinary accounts with no developer intervention. Complete one full round on independent devices, then replay.
+2. Confirm blocked chat messages clear, valid messages send, approved photos display and pending photos stay private.
+3. Briefly interrupt one device's network with its tab open, then reconnect within 15 seconds. Check that the crew resumes. A longer outage should return remaining players to the lobby.
+4. Check login persistence, account recovery code, friend invites, sound and touch controls on the deployed build.
+5. Use real gameplay screenshots/video as evidence. Label generated promotional artwork as artwork; do not present it as captured gameplay. Keep private credentials and personal data out of demos.
 
-- Be at least 18/the applicable age of majority when entering.
-- Be a legal resident of a country/territory in Appendix A and physically present in an eligible country when entering.
-- Have an active Handshake account linked to the email used to enter, and monitor that email.
-- Not fall within the listed excluded employee/officer/director, family/household, promotional-partner, agency or prize-supplier categories. Ask the organizer if a relationship is unclear.
-- Submit project title, cover image, description and playable URL through the Create a Multiplayer Game mission.
-- Deadline in the supplied official rules: October 30, 2026, 11:59 p.m. Pacific Time. Do not rely on a later date advertised elsewhere.
-
-## Branding and assets
-
-Room 905 is presented as an original fictional hotel setting. The included logo, door artwork and cover source are original, clearly marked placeholders. The project does not include OVO/Drake logos, songs, recordings, photographs or R.E.P.O. art/code. Replace placeholders with your own work or assets you are authorized to use. An OVO-inspired personal mood is not represented as official affiliation. This assessment does not establish trademark clearance for the title or authorization for any assets you add later.
-
-The sounds are generated locally with Web Audio; the visuals use Three.js and original canvas/SVG/geometry. Keep the third-party dependency licenses when distributing their code. Developer credentials are stored in server environment variables, not public assets. Guest play remains available without registration. Testing controls are password-protected and room-scoped; keep credentials private and demonstrate an ordinary round without developer intervention.
-
-## Submission and judging
-
-Execution, creativity, usefulness/value, and polish/thoughtfulness each carry 25%. Outstanding audio/device issues, confusing placeholder art or a broken deployment could hurt execution and polish even without violating an explicit rule. Finish the artwork, test two or three actual devices, verify replay/disconnect behavior, and capture your final cover before submitting. No ranking or prize outcome is guaranteed.
-
-Entry grants broad perpetual worldwide promotional rights covering the submission and certain personal/publicity materials, and includes liability, dispute, privacy and communication provisions. Read the complete rules before choosing to submit. Handshake administers the contest and may request eligibility evidence or winner paperwork.
-
-## Draft submission
-
-Title: Room 905
-
-Description: Room 905 is a cooperative haunted hotel recovery mission for 2–4 players. One Navigator sees a translucent 3D map and hidden threats; Scavengers recover abandoned property in first person and rely on their directions. Extract $600 before time runs out. Randomized layouts, fragile cargo and optional parkour make each run different. Built with ChatGPT Work and tested with friends across devices.
-
-Playable URL: https://quantum-courier-fz1a.onrender.com/
-
-Cover: replace public/assets/cover-placeholder.svg with final original artwork or an appropriate final-game image. The placeholder is not a finished submission cover.
-
-Keep the existing GitHub/Render names if desired; those names do not need to match the game's title. Submission remains a separate action in Handshake after deployment and final testing.
-
-## Code of Conduct follow-up and v2.6 changes
-
-The hotel explicitly commissions recovery of abandoned property; theft, trespass and heist language is removed from presentation. The humanoid/horned Sentinel is replaced by an abstract signal beacon. Encounters are harmless sensor interruptions with game penalties, without weapons, blood, injuries or attack animation. These changes address the ambiguity around unlawful-activity promotion and violent imagery. Original placeholder art and synthesized sounds remain, with no OVO/Drake affiliation or copyrighted recordings. Respectful crew messages are expected; user-entered chat is not a guarantee of moderation. Showcase and community posts, asset rights, personal conduct, truthful claims and account use still require the participant’s compliance.
-
-The Code of Conduct describes limited promotional display rights while the supplied official rules describe broader perpetual promotional permissions. The game cannot resolve that difference; read the complete entry terms and ask Handshake if that difference affects your submission decision. No confidential information should be put in public submission materials.
+No automated check can certify complete conduct compliance or a prize outcome. Final responsibility for eligibility, asset rights, submission claims and community conduct remains with the participant.

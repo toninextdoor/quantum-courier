@@ -30,3 +30,12 @@ test('lobby chord scheduler cleans up its timer and voices on stop',async()=>{
  const {startLobbyAmbience}=await import('../public/menu-audio.mjs');let tick,cancelled=0,voices=0,stops=0;const param={setValueAtTime(){},exponentialRampToValueAtTime(){},cancelScheduledValues(){}};const audio={state:'running',currentTime:0,createGain:()=>({gain:param,connect(){},disconnect(){}}),createOscillator:()=>{voices++;return {frequency:param,connect(){},disconnect(){},start(){},stop(){stops++;}};}};
  const stop=startLobbyAmbience(audio,{}, {schedule:fn=>{tick=fn;return 7;},cancel:id=>{assert.equal(id,7);cancelled++;}});assert.equal(voices,3);tick();assert.equal(voices,6);stop();stop();assert.equal(cancelled,1);tick();assert.equal(voices,6);assert.equal(stops,12);
 });
+
+test('moderation banner dismisses, replaces its timeout and can remain persistent for build errors',()=>{
+ const source=fs.readFileSync(require.resolve('../public/game.js'),'utf8'),nodes={error:{hidden:true},errorText:{},dismissError:{}},timers=new Map();let serial=0;
+ const ctx=vm.createContext({$:id=>nodes[id],setTimeout:fn=>{timers.set(++serial,fn);return serial;},clearTimeout:id=>timers.delete(id)});
+ vm.runInContext(source.slice(source.indexOf('let errorTimer;'),source.indexOf('function send(')),ctx);
+ vm.runInContext("showError('Content not allowed')",ctx);assert.equal(nodes.error.hidden,false);assert.equal(timers.size,1);
+ vm.runInContext("showError('Try another message')",ctx);assert.equal(timers.size,1);[...timers.values()][0]();assert.equal(nodes.error.hidden,true);
+ vm.runInContext("showError('Update required',true)",ctx);assert.equal(timers.size,0);assert.equal(nodes.error.hidden,false);nodes.dismissError.onclick();assert.equal(nodes.error.hidden,true);
+});
