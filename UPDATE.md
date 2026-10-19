@@ -1,7 +1,9 @@
-# Room 905 v4.3.1
+# Room 905 v4.3.2
 
+- Minimal trailer header: Official Trailer only. Removed the subtitle, footer copy and download link; native controls suppress the download option where supported.
+- Watch Official Trailer is visible on the fourth briefing page. Closing the player returns to that page without skipping the briefing. Options access remains available.
 - Options → Watch Trailer opens the approved film in a responsive, dismissible player. It fetches no video before clicking. Closing, Escape, or the start of a shift stops playback and releases the video download.
-- Lobby music pauses while watching and resumes afterward when sound is enabled. Hidden tabs pause the film. Native fullscreen, playback controls, optional English scene captions and a download link are included.
+- Lobby music pauses while watching and resumes afterward when sound is enabled. Hidden tabs pause the film. Native fullscreen, playback controls and optional English scene captions are included.
 - The optimized 720p trailer is about 10 MB, bundled locally under public/media. No video account, API key, external embed, or new environment variable is needed. Preserve that folder when uploading.
 
 ## Retained v4.3.0 fixes
@@ -15,7 +17,7 @@
 
 Extract this ZIP. Upload its contents into your existing repository, preserving public/ and test/ folders and replacing existing files. server.js and package.json belong at the repository root. Do not upload the ZIP as the application or include node_modules. Keep your Render environment variables, database and service unchanged. Build: npm ci. Start: npm start. Node: 24.x.
 
-After deployment, open /health: version must be 4.3.1. Reload all devices. Check one normal 2–4-player round, moderated chat recovery, a brief connection interruption, mobile joystick/sprint, and replay before submitting.
+After deployment, open /health: version must be 4.3.2. Reload all devices. Check one normal 2–4-player round, moderated chat recovery, a brief connection interruption, mobile joystick/sprint, and replay before submitting.
 
 Automated integration tests run locally; this does not establish production capacity or replace real-device visual/audio testing. Keep one web service instance: rooms remain in process memory. Paid hosting does not guarantee a player count.
 

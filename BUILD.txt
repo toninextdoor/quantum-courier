@@ -1,9 +1,9 @@
-ROOM 905 — VERIFIED PACKAGE v4.3.1
-Build: room905-4.3.1-trailer
+ROOM 905 — VERIFIED PACKAGE v4.3.2
+Build: room905-4.3.2-trailer-polish
 
 server.js and package.json must be at the repository root.
 public/index.html has data-stage="disclosure" on its HTML element.
 public/game.js starts disclosure -> briefing -> lobby.
 The second briefing page says CREW ROLES.
 The disclosure uses a plain backdrop.
-After deployment, /health must show version 4.3.1.
+After deployment, /health must show version 4.3.2.

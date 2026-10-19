@@ -1,10 +1,10 @@
-import {bindTrailer} from '/trailer.mjs?v=4.3.1';
-import {drawCrop} from '/photo-crop.mjs?v=4.3.1';
-import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.3.1';
-import {bindJoystick} from '/joystick.mjs?v=4.3.1';
-import { trolleyLayout } from '/trolley-layout.js?v=4.3.1';
+import {bindTrailer} from '/trailer.mjs?v=4.3.2';
+import {drawCrop} from '/photo-crop.mjs?v=4.3.2';
+import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.3.2';
+import {bindJoystick} from '/joystick.mjs?v=4.3.2';
+import { trolleyLayout } from '/trolley-layout.js?v=4.3.2';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.3.1';
+import { checkBrowser } from '/self-check.js?v=4.3.2';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -69,12 +69,12 @@ function turnBook(index){
  $('bookKicker').textContent=p.kicker;$('bookTitle').innerHTML=p.title;$('bookText').textContent=p.text;$('bookChapter').textContent=p.chapter;$('bookCounter').textContent=`0${bookIndex+1} / 04`;
  $('bookFacts').replaceChildren(...p.facts.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  $('bookArt').innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 225">${bookIllustrations[p.art]}</svg>`;
- $('bookPrev').disabled=bookIndex===0;$('bookNext').hidden=bookIndex===3;$('enterIntro').hidden=bookIndex!==3;
+ $('bookPrev').disabled=bookIndex===0;$('bookNext').hidden=bookIndex===3;$('enterIntro').hidden=bookIndex!==3;$('briefingTrailer').hidden=bookIndex!==3;
  $('bookDots').replaceChildren(...briefingPages.map((_,i)=>{const b=document.createElement('button');b.className=i===bookIndex?'bookDot selected':'bookDot';b.setAttribute('aria-label',`Briefing page ${i+1}`);b.setAttribute('aria-current',String(i===bookIndex));b.onclick=()=>turnBook(i);return b;}));
  $('bookPage').classList.remove('pageTurn');void $('bookPage').offsetWidth;$('bookPage').classList.add('pageTurn');
 }
 $('bookNext').onclick=()=>turnBook(bookIndex+1);$('bookPrev').onclick=()=>turnBook(bookIndex-1);
-window.addEventListener('keydown',e=>{if($('introScreen').hidden)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
+window.addEventListener('keydown',e=>{if($('introScreen').hidden||$('trailerDialog').open)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
 $('replayBriefing').onclick=()=>{document.documentElement.dataset.stage='briefing';release();document.exitPointerLock?.();turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();updateLobbyAmbience();};
 turnBook(0);
 // Startup always proceeds disclosure -> briefing -> lobby; Skip remains available.
@@ -134,8 +134,8 @@ $('sound').onclick = async () => {
   if(!soundOn)stopMenuSounds();$('sound').textContent=soundOn?(audio?.state==='running'?'SOUND ON':'ENABLE SOUND'):'SOUND OFF';$('sound').setAttribute('aria-pressed',String(soundOn));if(homeAudioAllowed())playMenuSound('click');
 };
 let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
-const trailerPlayer=bindTrailer({dialog:$('trailerDialog'),video:$('trailerVideo'),button:$('watchTrailer'),closeButton:$('closeTrailer'),status:$('trailerStatus'),
- canOpen:()=>{if(state?.phase==='playing'||lobby?.phase==='playing'){showError('Watch the trailer between shifts.');return false;}return document.documentElement.dataset.stage==='app'&&$('introScreen').hidden;},
+const trailerPlayer=bindTrailer({dialog:$('trailerDialog'),video:$('trailerVideo'),button:$('watchTrailer'),buttons:[$('watchTrailer'),$('briefingTrailer')],closeButton:$('closeTrailer'),status:$('trailerStatus'),
+ canOpen:()=>{if(state?.phase==='playing'||lobby?.phase==='playing'){showError('Watch the trailer between shifts.');return false;}return (document.documentElement.dataset.stage==='app'&&$('introScreen').hidden)||(document.documentElement.dataset.stage==='briefing'&&bookIndex===3);},
  isMuted:()=>!soundOn,
  onOpen:()=>{release();document.exitPointerLock?.();$('optionsMenu').open=false;document.body.classList.add('watchingTrailer');stopMenuSounds();updateLobbyAmbience();},
  onClose:()=>{document.body.classList.remove('watchingTrailer');updateLobbyAmbience();}
@@ -205,7 +205,7 @@ socket.on('connect', () => {
   else showError();
   $('reconnectScreen').hidden=true;
 });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.3.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.3.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.3.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.3.2 · SERVER ${data.version}`; serverCompatible=data.version==='4.3.2';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.3.2, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();release(); $('connection').textContent = 'RECONNECTING';if(lobby){$('reconnectScreen').hidden=false;$('reconnectMessage').textContent='Reconnecting your link… Your crew slot is held for up to 15 seconds. Keep this tab open.';} });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {

@@ -162,4 +162,4 @@ Temporary transport loss reserves a crew slot for 15 seconds and pauses an activ
 
 ## Optional trailer
 
-From the lobby, open Options → Watch Trailer. The video loads only after clicking and pauses lobby audio. Close or Escape returns to the lobby. Native playback/fullscreen controls, English scene captions, and a download link are available. Starting a round closes the player automatically. The briefing and guest joining flow remain available without watching.
+On the last briefing page, choose Watch Official Trailer, or open Options → Watch Trailer from the lobby. Closing a trailer opened from the briefing returns to that same page. The video loads only after clicking and pauses lobby audio. Close or Escape returns to the lobby. Native playback/fullscreen controls, English scene captions are available. Starting a round closes the player automatically. The briefing and guest joining flow remain available without watching.
