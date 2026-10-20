@@ -10,3 +10,7 @@ The setting is a fictional hotel inspired by the Greater Toronto Area lakeshore.
 
 - public/media/room-905-trailer-v4.3.1.mp4: browser-optimized copy of the approved Room 905 trailer, combining original rendered scenes, supplied game recordings, and the supplied AI-generated Glass After Hours track. No artist recording was added.
 - Matching JPG: frame from that trailer. Matching VTT: English scene guide and music captions; the film contains no spoken dialogue.
+
+## Tutorial examples (V4.4.1)
+
+`public/media/practice/` contains short muted H.264 excerpts from the actual gameplay segments of the existing Room 905 trailer: Recovery entry/cargo/delivery, Navigator mission control, Guardian Sentinel encounter. Original supplied gameplay recordings are the source; no new third-party media was added.

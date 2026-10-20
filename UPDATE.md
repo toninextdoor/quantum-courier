@@ -1,9 +1,7 @@
-# Room 905 V4.4.0
+# Room 905 V4.4.1
 
-Replace the repository contents with this ZIP’s contents. Keep your Render environment variables. No new environment variables are required. PostgreSQL adds the tutorial completion column automatically.
+Replace the repository contents with this ZIP’s contents and redeploy. No new Render settings.
 
-Interactive practice replaces the flipbook: Recovery movement, sprint, pickup, repeated grip, delivery; Navigator teammate selection, hidden EM fault, alert and safe waypoint; Guardian approach and pulse. It is an explicitly labeled overhead simulation with no public rooms, score, XP or timer. Live play remains first-person 3D.
+Practice now follows Recovery → Recovery example → Navigator → Navigator example → Guardian → Guardian example → lobby. Each exercise waits for Continue after success. Chapters cannot be selected out of order. Skip Tutorial remains available throughout. Your original selected lobby role is preserved.
 
-Guest completion is stored locally; signed-in completion is saved per role to PostgreSQL. Skipping bypasses practice for that role for the current visit without falsely marking it completed. Options → Practice / How to Play reopens any role. The disclosure and optional trailer remain.
-
-Test on desktop and a real phone before submission. This tutorial teaches the core actions; parkour and live-team communication still need real playtesting.
+The examples are trimmed from the actual recorded gameplay in your existing trailer. They are muted, captioned with explanatory text, play inline and load only when reached. Continue unlocks when the example ends; an unavailable video allows continuation. Completed roles save after continuing from their examples, using existing account/browser progress storage. Practice remains separate from XP and multiplayer rooms.

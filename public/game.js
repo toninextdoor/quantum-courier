@@ -1,11 +1,11 @@
-import {bindPractice} from '/practice.mjs?v=4.4.0';
-import {bindTrailer} from '/trailer.mjs?v=4.4.0';
-import {drawCrop} from '/photo-crop.mjs?v=4.4.0';
-import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.4.0';
-import {bindJoystick} from '/joystick.mjs?v=4.4.0';
-import { trolleyLayout } from '/trolley-layout.js?v=4.4.0';
+import {bindPractice} from '/practice.mjs?v=4.4.1';
+import {bindTrailer} from '/trailer.mjs?v=4.4.1';
+import {drawCrop} from '/photo-crop.mjs?v=4.4.1';
+import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.4.1';
+import {bindJoystick} from '/joystick.mjs?v=4.4.1';
+import { trolleyLayout } from '/trolley-layout.js?v=4.4.1';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.4.0';
+import { checkBrowser } from '/self-check.js?v=4.4.1';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -206,7 +206,7 @@ socket.on('connect', () => {
   else showError();
   $('reconnectScreen').hidden=true;
 });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.4.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.4.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.4.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.4.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.4.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.4.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();release(); $('connection').textContent = 'RECONNECTING';if(lobby){$('reconnectScreen').hidden=false;$('reconnectMessage').textContent='Reconnecting your link… Your crew slot is held for up to 15 seconds. Keep this tab open.';} });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
