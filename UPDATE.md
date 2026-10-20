@@ -1,26 +1,9 @@
-# Room 905 v4.3.2
+# Room 905 V4.4.0
 
-- Minimal trailer header: Official Trailer only. Removed the subtitle, footer copy and download link; native controls suppress the download option where supported.
-- Watch Official Trailer is visible on the fourth briefing page. Closing the player returns to that page without skipping the briefing. Options access remains available.
-- Options → Watch Trailer opens the approved film in a responsive, dismissible player. It fetches no video before clicking. Closing, Escape, or the start of a shift stops playback and releases the video download.
-- Lobby music pauses while watching and resumes afterward when sound is enabled. Hidden tabs pause the film. Native fullscreen, playback controls and optional English scene captions are included.
-- The optimized 720p trailer is about 10 MB, bundled locally under public/media. No video account, API key, external embed, or new environment variable is needed. Preserve that folder when uploading.
+Replace the repository contents with this ZIP’s contents. Keep your Render environment variables. No new environment variables are required. PostgreSQL adds the tutorial completion column automatically.
 
-## Retained v4.3.0 fixes
+Interactive practice replaces the flipbook: Recovery movement, sprint, pickup, repeated grip, delivery; Navigator teammate selection, hidden EM fault, alert and safe waypoint; Guardian approach and pulse. It is an explicitly labeled overhead simulation with no public rooms, score, XP or timer. Live play remains first-person 3D.
 
-- Moderation/error banners dismiss automatically after six seconds, have a close button, and clear when editing chat or sending a valid message. Version mismatch warnings remain until dismissed.
-- Brief transport interruptions hold the player's slot for 15 seconds. During an active shift, simulation, countdown, grip, respawn and cooldown clocks pause together. The same browser session can reconnect automatically. Intentional Leave remains immediate; expired recovery returns the crew to the lobby. Refreshes, server restarts and deployments cannot restore a running shift.
-- Reconnection revalidates authenticated accounts and clears developer authority. No developer password is included.
-- Briefing now describes the mobile joystick. Hotel wall print is an original geometric lakeshore scene with no placeholder label.
+Guest completion is stored locally; signed-in completion is saved per role to PostgreSQL. Skipping bypasses practice for that role for the current visit without falsely marking it completed. Options → Practice / How to Play reopens any role. The disclosure and optional trailer remain.
 
-## Upload and deploy
-
-Extract this ZIP. Upload its contents into your existing repository, preserving public/ and test/ folders and replacing existing files. server.js and package.json belong at the repository root. Do not upload the ZIP as the application or include node_modules. Keep your Render environment variables, database and service unchanged. Build: npm ci. Start: npm start. Node: 24.x.
-
-After deployment, open /health: version must be 4.3.2. Reload all devices. Check one normal 2–4-player round, moderated chat recovery, a brief connection interruption, mobile joystick/sprint, and replay before submitting.
-
-Automated integration tests run locally; this does not establish production capacity or replace real-device visual/audio testing. Keep one web service instance: rooms remain in process memory. Paid hosting does not guarantee a player count.
-
-## Trailer smoke test
-
-Open Options → Watch Trailer on desktop and phone. Check play, pause, seeking, volume, CC and fullscreen. Close with Close or Escape; verify no audio continues. The video must not download before clicking. If your crew starts a shift while watching, the player must close automatically.
+Test on desktop and a real phone before submission. This tutorial teaches the core actions; parkour and live-team communication still need real playtesting.

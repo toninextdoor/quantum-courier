@@ -1,3 +1,7 @@
+# Room 905 V4.4.0
+
+Interactive role practice now replaces the startup flipbook. See UPDATE.md for installation and progress-saving details.
+
 # Room 905
 
 An original asymmetric multiplayer 3D salvage game for 2–4 players. The Navigator sits in a 3D mission-command trailer with a translucent hotel suite hologram; the other players explore in first person, retrieve fragile valuables, and depend on the Navigator's guidance.

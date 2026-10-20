@@ -160,7 +160,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.3.2', build:'room905-4.3.2-trailer-polish' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.4.0', build:'room905-4.4.0-trailer-polish' }));
   const ROLE_LIMITS={Navigator:1,Guardian:1,Scavenger:2};
   const roleAvailable=(room,role,except)=>Object.hasOwn(ROLE_LIMITS,role)&&room.players.filter(p=>p.id!==except&&p.role===role).length<ROLE_LIMITS[role];
   function roles(room){for(const p of room.players){p.input={};p.inputAt=0;}}
@@ -342,7 +342,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       const room=rooms.get(socket.data.code);resumeClock(room);roster(room);
       if(room.game)snapshot(room,performance.now());
     }
-    socket.emit('build', {version:'4.3.2'});
+    socket.emit('build', {version:'4.4.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -572,7 +572,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   return { app, server, io, rooms, close };
 }
 if (require.main === module) {
-  const game = createGameServer(); game.server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Room 905 v4.3.2 running on port ${process.env.PORT || 3000}`));
+  const game = createGameServer(); game.server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Room 905 v4.4.0 running on port ${process.env.PORT || 3000}`));
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await game.close(); process.exit(0); });
 }
 module.exports = { createGameServer, solid, route, clearLine, WALLS, HOME, CARGO, HAZARDS, PATROL, generateMap, floorCells, resolvePlatformOverlap, platformOverlap };

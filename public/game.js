@@ -1,10 +1,11 @@
-import {bindTrailer} from '/trailer.mjs?v=4.3.2';
-import {drawCrop} from '/photo-crop.mjs?v=4.3.2';
-import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.3.2';
-import {bindJoystick} from '/joystick.mjs?v=4.3.2';
-import { trolleyLayout } from '/trolley-layout.js?v=4.3.2';
+import {bindPractice} from '/practice.mjs?v=4.4.0';
+import {bindTrailer} from '/trailer.mjs?v=4.4.0';
+import {drawCrop} from '/photo-crop.mjs?v=4.4.0';
+import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.4.0';
+import {bindJoystick} from '/joystick.mjs?v=4.4.0';
+import { trolleyLayout } from '/trolley-layout.js?v=4.4.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.3.2';
+import { checkBrowser } from '/self-check.js?v=4.4.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -74,8 +75,8 @@ function turnBook(index){
  $('bookPage').classList.remove('pageTurn');void $('bookPage').offsetWidth;$('bookPage').classList.add('pageTurn');
 }
 $('bookNext').onclick=()=>turnBook(bookIndex+1);$('bookPrev').onclick=()=>turnBook(bookIndex-1);
-window.addEventListener('keydown',e=>{if($('introScreen').hidden||$('trailerDialog').open)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
-$('replayBriefing').onclick=()=>{document.documentElement.dataset.stage='briefing';release();document.exitPointerLock?.();turnBook(0);$('introScreen').hidden=false;document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();updateLobbyAmbience();};
+window.addEventListener('keydown',e=>{if($('introScreen').hidden||$('trailerDialog').open)return;if(practice?.active)return;if(e.key==='Escape'){e.preventDefault();void dismissIntro();}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();turnBook(bookIndex+(e.key==='ArrowRight'?1:-1));}});
+$('replayBriefing').onclick=()=>openPractice();
 turnBook(0);
 // Startup always proceeds disclosure -> briefing -> lobby; Skip remains available.
 if(!$('introScreen').hidden){document.querySelector('header').inert=true;document.querySelector('footer').inert=true;$('game').inert=true;$('front').inert=true;$('bookNext').focus();}
@@ -135,7 +136,7 @@ $('sound').onclick = async () => {
 };
 let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
 const trailerPlayer=bindTrailer({dialog:$('trailerDialog'),video:$('trailerVideo'),button:$('watchTrailer'),buttons:[$('watchTrailer'),$('briefingTrailer')],closeButton:$('closeTrailer'),status:$('trailerStatus'),
- canOpen:()=>{if(state?.phase==='playing'||lobby?.phase==='playing'){showError('Watch the trailer between shifts.');return false;}return (document.documentElement.dataset.stage==='app'&&$('introScreen').hidden)||(document.documentElement.dataset.stage==='briefing'&&bookIndex===3);},
+ canOpen:()=>{if(practice?.active)return true;if(state?.phase==='playing'||lobby?.phase==='playing'){showError('Watch the trailer between shifts.');return false;}return (document.documentElement.dataset.stage==='app'&&$('introScreen').hidden)||(document.documentElement.dataset.stage==='briefing'&&bookIndex===3);},
  isMuted:()=>!soundOn,
  onOpen:()=>{release();document.exitPointerLock?.();$('optionsMenu').open=false;document.body.classList.add('watchingTrailer');stopMenuSounds();updateLobbyAmbience();},
  onClose:()=>{document.body.classList.remove('watchingTrailer');updateLobbyAmbience();}
@@ -179,8 +180,8 @@ socket.on('dev:effect',async data=>{
   setLocalPreview(data.kind);audioPending=['heartbeat','ambience','combined'].includes(data.kind)&&audio?.state!=='running';
   if(['heartbeat','ambience','combined'].includes(data.kind)){soundOn=true;if(audio?.state!=='running')$('sound').textContent='ENABLE SOUND';await unlockAudio();$('sound').textContent=audio?.state==='running'?'SOUND ON':'ENABLE SOUND';$('sound').setAttribute('aria-pressed','true');}
 });
-$('create').onclick = () => send('enter', { create: true, name: $('name').value,role:selectedEntryRole });
-$('join').onclick = () => send('enter', { name: $('name').value, code: $('code').value,role:selectedEntryRole });
+$('create').onclick = () => {if(!practice.completed(selectedEntryRole)&&!practiceSkipped.has(selectedEntryRole)){openPractice();return;}send('enter', { create: true, name: $('name').value,role:selectedEntryRole });};
+$('join').onclick = () => {if(!practice.completed(selectedEntryRole)&&!practiceSkipped.has(selectedEntryRole)){openPractice();return;}send('enter', { name: $('name').value, code: $('code').value,role:selectedEntryRole });};
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').click(); });
 $('start').onclick = $('again').onclick = () => send('start', {});
 $('copyCode').onclick = async () => { try { await navigator.clipboard.writeText(lobby.code); $('copyCode').textContent = 'Copied!'; } catch { $('copyCode').textContent = `Code: ${lobby.code}`; } };
@@ -205,7 +206,7 @@ socket.on('connect', () => {
   else showError();
   $('reconnectScreen').hidden=true;
 });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.3.2 · SERVER ${data.version}`; serverCompatible=data.version==='4.3.2';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.3.2, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.4.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.4.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.4.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();release(); $('connection').textContent = 'RECONNECTING';if(lobby){$('reconnectScreen').hidden=false;$('reconnectMessage').textContent='Reconnecting your link… Your crew slot is held for up to 15 seconds. Keep this tab open.';} });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -703,7 +704,7 @@ function drawAvatars(){
  $('avatarPicker').replaceChildren(...avatarIds.map(id=>{const button=document.createElement('button');button.type='button';button.className='avatarOption';button.setAttribute('aria-label',`${id} avatar`);button.setAttribute('aria-pressed',String(chosenAvatar===id));const img=document.createElement('img');img.src=`/assets/avatars/${id}.svg`;img.alt='';button.append(img);button.onclick=()=>{chosenAvatar=id;drawAvatars();};return button;}));
 }
 function showAccount(user){
- accountUser=user;renderProgression(user);refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
+ accountUser=user;practice.setUser(user);renderProgression(user);refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
  $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';$('regularSignIn').hidden=!!user;$('forgotPassword').hidden=!!user;$('regularDialog').classList.toggle('profilePage',!!user);$('accountTitle').textContent=user?'Your profile':'Your next shift';
  $('profileName').textContent=user?`Signed in as ${user.username}`:'';if(user){$('profileBio').value=user.bio||'';updateBioPreview();$('photoStatus').textContent=photoStatusText(user.photoStatus);$('removePhoto').disabled=user.photoStatus==='none';if(user.photoStatus==='pending'){$('photoDraft').src='/api/account/photo-preview?t='+Date.now();$('photoDraft').hidden=false;}else if(!photoDraftData){$('photoDraft').hidden=true;}}
  $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
@@ -786,7 +787,7 @@ let restoreBriefing=false;
 function dismissDisclosure(){
  try{sessionStorage.setItem('room905-disclosure-v1','seen');}catch{}
  document.documentElement.dataset.stage=restoreBriefing?'briefing':'app';$('introScreen').hidden=!restoreBriefing;disclosureDialog.close();
- if(restoreBriefing){$('bookNext').focus();}else{document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('front').inert=false;$('game').inert=false;document.querySelector('#optionsMenu summary').focus();}
+ if(restoreBriefing){if(practice.completed(selectedEntryRole))void dismissIntro();else openPractice();}else{document.querySelector('header').inert=false;document.querySelector('footer').inert=false;$('front').inert=false;$('game').inert=false;document.querySelector('#optionsMenu summary').focus();}
 }
 $('continueDisclosure').onclick=dismissDisclosure;
 disclosureDialog.addEventListener('cancel',e=>{e.preventDefault();dismissDisclosure();});
@@ -889,6 +890,13 @@ $('removePhoto').onclick=async()=>{if(await accountAction('photo-remove')){photo
 $('refreshPhotos').onclick=()=>{
  socket.timeout(8000).emit('dev:photos',{},(err,result)=>{if(err||result?.error){$('devStatus').textContent=err?'Photo queue timed out.':result.error;return;}$('photoQueue').replaceChildren(...result.photos.map(p=>{const card=document.createElement('div');card.className='photoReview';const img=document.createElement('img');img.src=p.image;img.alt='Pending image from '+p.username;const name=document.createElement('strong');name.textContent=p.username;card.append(img,name);for(const action of ['approve','reject']){const b=document.createElement('button');b.textContent=action==='approve'?'Approve':'Reject';b.onclick=()=>{b.disabled=true;socket.timeout(8000).emit('dev:photo-review',{username:p.username,revision:p.revision,action},(error,r)=>{if(error||r?.error||!r?.ok){b.disabled=false;$('devStatus').textContent=error?'Review timed out.':r?.error||'Photo changed. Refresh the queue.';}else card.remove();});};card.append(b);}return card;}));if(!result.photos.length)$('photoQueue').textContent='No pending photos.';});
 };
+
+const practiceSkipped=new Set();
+const practice=bindPractice({host:$('introScreen'),getUser:()=>accountUser,onRole:r=>{selectedEntryRole=r;document.querySelectorAll('[data-role-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.roleChoice===r)));},onSignIn:openProfile,onExit:()=>{practiceSkipped.add(selectedEntryRole);void dismissIntro();}});
+$('replayBriefing').textContent='PRACTICE / HOW TO PLAY';
+function openPractice(){if(state?.phase==='playing'||lobby?.phase==='playing')return showError('Practice is available between shifts.');release();document.exitPointerLock?.();$('optionsMenu').open=false;for(const el of [document.querySelector('header'),document.querySelector('footer'),$('game'),$('front')])el.inert=true;practice.open(selectedEntryRole);updateLobbyAmbience();}
+
+$('regularDialog').addEventListener('close',()=>{if(practice.active&&practice.completed(selectedEntryRole))practice.close();});
 
 function updateLobbyAmbience(){const allowed=homeAudioAllowed()&&document.documentElement.dataset.stage==='app'&&$('introScreen').hidden&&lobby?.phase!=='playing'&&audio?.state==='running';if(allowed&&!lobbyBedStop)lobbyBedStop=startLobbyAmbience(audio,master);else if(!allowed&&lobbyBedStop){lobbyBedStop();lobbyBedStop=null;}}
 let menuSoundStops=[],lastMenuClick=-Infinity;
