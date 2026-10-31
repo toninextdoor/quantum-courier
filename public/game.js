@@ -1,11 +1,11 @@
-import {bindPractice} from '/practice.mjs?v=4.5.0';
-import {bindTrailer} from '/trailer.mjs?v=4.5.0';
-import {drawCrop} from '/photo-crop.mjs?v=4.5.0';
-import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.5.0';
-import {bindJoystick} from '/joystick.mjs?v=4.5.0';
-import { trolleyLayout } from '/trolley-layout.js?v=4.5.0';
+import {bindPractice} from '/practice.mjs?v=4.5.1';
+import {bindTrailer} from '/trailer.mjs?v=4.5.1';
+import {drawCrop} from '/photo-crop.mjs?v=4.5.1';
+import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.5.1';
+import {bindJoystick} from '/joystick.mjs?v=4.5.1';
+import { trolleyLayout } from '/trolley-layout.js?v=4.5.1';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.5.0';
+import { checkBrowser } from '/self-check.js?v=4.5.1';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -30,7 +30,7 @@ function applyQuality(value,automatic=false){
 $('graphics').onclick=()=>{applyQuality((quality+1)%3);try{sessionStorage.setItem('room905-quality',String(quality));}catch{}};
 $('useRecommended').onclick=()=>{if($('deviceDialog').open||$('friendsDialog').open||$('disclosureDialog').open)$('deviceDialog').close();$('devicePanel').hidden=true;$('deviceReopen').hidden=false;applyQuality(recommendedQuality,true);try{sessionStorage.removeItem('room905-quality');sessionStorage.setItem('room905-device-collapsed','yes');}catch{}};
 async function runBrowserCheck(){
-  if(checkRunning)return;if(state?.phase==='playing')return showError('Run the browser check between rounds.');
+  if(checkRunning)return;if(state?.phase==='playing')return showError('You can check your browser between rounds.');
   checkRunning=true;$('checkAgain').disabled=true;$('deviceStatus').textContent='Checking 3D performance…';
   try{
     const result=await checkBrowser(message=>{$('deviceStatus').textContent=message;$('introCheck').textContent=message;});
@@ -41,7 +41,7 @@ async function runBrowserCheck(){
     $('deviceDetails').textContent=`Sample scene: about ${Math.round(result.fps)} FPS at ${qualityNames[result.quality]}. ${touchDevice?'Touch controls available.':'Keyboard and mouse controls available.'} ${typeof window.AudioContext==='function'||typeof window.webkitAudioContext==='function'?'Audio supported; click to enable.':'Audio unavailable; visual cues still work.'} This is an estimate, not a guarantee; quality adapts during play unless you choose it manually.`;
     $('introCheck').textContent=`Browser check complete · ${qualityNames[result.quality]} recommended`;
     const pingAt=performance.now();socket.timeout(2000).emit('check:ping',(err)=>{if(!err)$('deviceDetails').textContent+=` Server round trip: ${Math.round(performance.now()-pingAt)} ms (single sample).`;else $('deviceDetails').textContent+=' Server connection slow or unavailable; wait for ONLINE.';});
-  }catch(e){$('devicePanel').hidden=false;$('deviceReopen').hidden=false;$('deviceStatus').textContent='Check could not finish';$('deviceDetails').textContent='Try RUN CHECK again. You can try MINIMAL graphics; a successful check does not replace a real multiplayer playtest.';$('introCheck').textContent='Check incomplete · see browser readiness';applyQuality(2,true);}
+  }catch(e){$('devicePanel').hidden=false;$('deviceReopen').hidden=false;$('deviceStatus').textContent='Check could not finish';$('deviceDetails').textContent='Run the check again. If it still fails, try Minimal graphics.';$('introCheck').textContent='Check incomplete · see browser readiness';applyQuality(2,true);}
   finally{checkRunning=false;$('checkAgain').disabled=false;}
 }
 $('checkAgain').onclick=runBrowserCheck;
@@ -96,8 +96,8 @@ function showError(text = '', persistent = false) {
 $('dismissError').onclick=()=>showError();
 function send(event, data) {
   if(!serverCompatible)return showError('Client/server versions do not match. Deploy the full update and reload.');
-  showError(); if (!socket.connected) return showError('Connection unavailable. Wait for reconnection.');
-  socket.timeout(5000).emit(event, data, (err, response) => { if (err) showError('Request timed out. Check your connection.'); else if (response?.error) showError(response.error); });
+  showError(); if (!socket.connected) return showError('You’re offline. Wait for the connection to return.');
+  socket.timeout(5000).emit(event, data, (err, response) => { if (err) showError('The server didn’t respond. Check your connection and try again.'); else if (response?.error) showError(response.error); });
 }
 async function unlockAudio() {
   if(!soundOn)return;
@@ -136,7 +136,7 @@ $('sound').onclick = async () => {
 };
 let devSignedIn=false, soundTapCount=0, soundTapAt=0, devEffect=null;
 const trailerPlayer=bindTrailer({dialog:$('trailerDialog'),video:$('trailerVideo'),button:$('watchTrailer'),buttons:[$('watchTrailer'),$('briefingTrailer')],closeButton:$('closeTrailer'),status:$('trailerStatus'),
- canOpen:()=>{if(practice?.active)return true;if(state?.phase==='playing'||lobby?.phase==='playing'){showError('Watch the trailer between shifts.');return false;}return (document.documentElement.dataset.stage==='app'&&$('introScreen').hidden)||(document.documentElement.dataset.stage==='briefing'&&bookIndex===3);},
+ canOpen:()=>{if(practice?.active)return true;if(state?.phase==='playing'||lobby?.phase==='playing'){showError('You can watch the trailer between rounds.');return false;}return (document.documentElement.dataset.stage==='app'&&$('introScreen').hidden)||(document.documentElement.dataset.stage==='briefing'&&bookIndex===3);},
  isMuted:()=>!soundOn,
  onOpen:()=>{release();document.exitPointerLock?.();$('optionsMenu').open=false;document.body.classList.add('watchingTrailer');stopMenuSounds();updateLobbyAmbience();},
  onClose:()=>{document.body.classList.remove('watchingTrailer');updateLobbyAmbience();}
@@ -206,9 +206,9 @@ socket.on('connect', () => {
   else showError();
   $('reconnectScreen').hidden=true;
 });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.5.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.5.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.5.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.5.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.5.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.5.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();release(); $('connection').textContent = 'RECONNECTING';if(lobby){$('reconnectScreen').hidden=false;$('reconnectMessage').textContent='Reconnecting your link… Your crew slot is held for up to 15 seconds. Keep this tab open.';} });
-socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
+socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('You couldn’t connect to the server. Try again.'); });
 socket.on('lobby', data => {
   if(data.phase==='lobby')$('reconnectScreen').hidden=true;
   lobby = data;updateLobbyAmbience(); $('entry').hidden = true; $('lobby').hidden = data.phase !== 'lobby';
@@ -317,12 +317,12 @@ socket.on('state', data => {
   }
   if (data.phase === 'finished') {
     release(); document.exitPointerLock?.(); $('result').hidden = false;
-    $('resultTitle').textContent = data.outcome === 'won' ? 'You made it out.' : 'Room 905 keeps its secrets.';
-    $('resultSubtitle').textContent = data.outcome === 'won' ? `Quota reached: $${data.score} recovered. Your crew completed the shift.` : `Time ran out. $${Math.max(0,data.quota-data.score)} short of the quota. Try nearby valuables first and follow your Navigator’s waypoints.`;
+    $('resultTitle').textContent = data.outcome === 'won' ? 'You reached the goal.' : 'You ran out of time.';
+    $('resultSubtitle').textContent = data.outcome === 'won' ? `Goal reached: $${data.score} recovered. Your crew finished the round.` : `Time ran out. $${Math.max(0,data.quota-data.score)} short of the goal. Try nearby valuables first and follow your Navigator’s waypoints.`;
     $('resultScore').textContent = `$${data.score} / $${data.quota}`; $('resultDeliveries').textContent = data.deliveries;
-    if(previous?.phase!=='finished')$('resultXP').textContent=accountUser?(data.xpAward?`+${data.xpAward} XP · saving to your profile`:'No XP this shift · play at least 30 seconds; developer-controlled rounds do not earn XP.'):'Sign in to save XP and unlock cosmetics.';
+    if(previous?.phase!=='finished')$('resultXP').textContent=accountUser?(data.xpAward?`+${data.xpAward} XP · saving to your profile`:'No XP this round. Play for at least 30 seconds. Rounds with developer controls don’t earn XP.'):'Sign in to save XP and unlock cosmetics.';
     $('resultDamage').textContent = `$${data.damage}`; $('resultCatches').textContent = data.catches;
-    $('again').hidden = lobby?.host !== socket.id; $('replayHelp').textContent = lobby?.host === socket.id ? 'Play again with the same crew and roles on a new randomized layout.' : 'Waiting for the host to launch another shift.';
+    $('again').hidden = lobby?.host !== socket.id; $('replayHelp').textContent = lobby?.host === socket.id ? 'Keep your crew and roles. The next round gets a new layout.' : 'Your host can start the next round.';
   }
   updateAmbience();
   updateEntities(nav);
@@ -708,19 +708,19 @@ function drawAvatars(){
 }
 function showAccount(user){
  accountUser=user;practice.setUser(user);renderProgression(user);refreshHeaderIdentity(user);if(user&&socket.connected)socket.emit('friends:subscribe',{});$('accountForm').hidden=!!user;$('accountProfile').hidden=!user;
- $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';$('regularSignIn').hidden=!!user;$('forgotPassword').hidden=!!user;$('regularDialog').classList.toggle('profilePage',!!user);$('accountTitle').textContent=user?'Your profile':'Your next shift';
+ $('regularSignIn').textContent=user?'PROFILE':'SIGN IN';$('regularSignIn').hidden=!!user;$('forgotPassword').hidden=!!user;$('regularDialog').classList.toggle('profilePage',!!user);$('accountTitle').textContent=user?'Your profile':'Your account';
  $('profileName').textContent=user?`Signed in as ${user.username}`:'';if(user){$('profileBio').value=user.bio||'';updateBioPreview();$('photoStatus').textContent=photoStatusText(user.photoStatus);$('removePhoto').disabled=user.photoStatus==='none';if(user.photoStatus==='pending'){$('photoDraft').src='/api/account/photo-preview?t='+Date.now();$('photoDraft').hidden=false;}else if(!photoDraftData){$('photoDraft').hidden=true;}}
  $('name').readOnly=!!user;if(user){$('name').value=user.username;chosenAvatar=user.avatar;}
  drawAvatars();
 }
 async function loadAccount(){
  if(accountLoading||accountBusy)return;accountLoading=true;const epoch=accountEpoch;
- try{const response=await fetch('/api/account',{credentials:'same-origin',cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error);if(epoch!==accountEpoch)return;accountRetry=0;accountEnabled=data.enabled;showAccount(data.user);$('accountStatus').textContent=data.enabled?(data.user?'Avatar changes apply the next time you join a crew.':'Sign in or choose a badge and create an account.'):'Accounts are awaiting database setup. Guest play is ready.';$('accountLogin').disabled=$('accountRegister').disabled=!data.enabled;}
+ try{const response=await fetch('/api/account',{credentials:'same-origin',cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error);if(epoch!==accountEpoch)return;accountRetry=0;accountEnabled=data.enabled;showAccount(data.user);$('accountStatus').textContent=data.enabled?(data.user?'Avatar changes apply the next time you join a crew.':'Sign in or choose a badge and create an account.'):'Accounts aren’t set up yet. You can play as a guest.';$('accountLogin').disabled=$('accountRegister').disabled=!data.enabled;}
  catch(e){$('accountStatus').textContent=e.message;if(accountRetry<3){accountRetry++;setTimeout(loadAccount,accountRetry*1500);}}finally{accountLoading=false;}
 }
 async function accountAction(action,body={}){
  if(accountBusy)return;if(lobby){$('accountStatus').textContent='Leave your crew before changing your account or avatar.';return;}accountBusy=true;accountEpoch++;$('accountStatus').textContent='Saving…';
- try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Profile saved. You are ready for your next shift.':'Signed out. Guest play is ready.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});if(['register','login','logout','reset','delete'].includes(action)){socket.disconnect();socket.connect();}return true;}
+ try{const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),data=await response.json();if(!response.ok)throw Error(data.error);showAccount(data.user);if(data.recoveryCode){$('recoveryCodeValue').textContent=data.recoveryCode;$('recoveryCodePanel').hidden=false;}if(data.reset){$('resetPasswordForm').reset();$('resetPasswordForm').hidden=true;}$('recoveryPass').value='';$('accountPass').value='';$('deletePass').value='';$('accountStatus').textContent=data.reset?'Password reset. Sign in with your new password and generate a new recovery code.':data.user?'Your profile is saved.':'You signed out. You can keep playing as a guest.';if(data.recoveryCode)socket.once('connect',()=>{if(!$('regularDialog').open)$('regularDialog').showModal();});if(['register','login','logout','reset','delete'].includes(action)){socket.disconnect();socket.connect();}return true;}
  catch(e){$('accountStatus').textContent=e.message;return false;}finally{accountBusy=false;}
 }
 $('closeAccount').onclick=()=>$('regularDialog').close();
@@ -768,7 +768,7 @@ function requestMobilePulse(){
   pulsePending=true;const round=state.roundId;
   socket.timeout(5000).emit('guardian:stun',{},(err,response)=>{
     pulsePending=false;if(state?.roundId!==round||state.phase!=='playing')return;
-    mobilePulseFeedback(err?'Pulse timed out. Try again.':response?.error||'PULSE SENT · SENTINEL PAUSED');
+    mobilePulseFeedback(err?'Pulse timed out. Try again.':response?.error||'Your pulse stopped the Sentinel.');
   });
 }
 $('guardianPulse').addEventListener('pointerdown',e=>{
@@ -865,7 +865,7 @@ function heritageLabel(h){const badge=document.createElement('span');badge.class
 
 function portraitURL(user){return typeof user?.portrait==='string'&&/^\/api\/portraits\/[a-f0-9-]{36}$/.test(user.portrait)?user.portrait:`/assets/avatars/${avatarIds.includes(user?.avatar)?user.avatar:'amber'}.svg`;}
 let photoDraftData=null;
-function updateBioPreview(){const value=$('profileBio').value;$('bioCount').textContent=`${value.length} / 160`;$('bioPreview').textContent=value||'Your next recovery story starts here.';}
+function updateBioPreview(){const value=$('profileBio').value;$('bioCount').textContent=`${value.length} / 160`;$('bioPreview').textContent=value||'Add a short bio if you want.';}
 function photoStatusText(status){return ({none:'Using your preset badge.',pending:'Pending review · only you and the moderator can see this upload.',approved:'Photo approved · visible to your crew and friends.',rejected:'Photo not approved. Choose another image or use a preset.'})[status]||'Choose a profile photo.';}
 $('profileBio').addEventListener('input',updateBioPreview);
 $('saveProfile').onclick=()=>accountAction('profile',{bio:$('profileBio').value});
@@ -891,7 +891,7 @@ $('photoFile').addEventListener('change',async()=>{
 $('uploadPhoto').onclick=async()=>{if(!photoDraftData)return;const sent=photoDraftData;$('uploadPhoto').disabled=true;const ok=await accountAction('photo',{image:sent});if(ok&&sent===photoDraftData){photoDraftData=null;cropImage=null;$('cropEditor').hidden=true;$('photoFile').value='';}else if(photoDraftData)$('uploadPhoto').disabled=false;};
 $('removePhoto').onclick=async()=>{if(await accountAction('photo-remove')){photoSelection++;photoDraftData=null;cropImage=null;$('cropEditor').hidden=true;$('photoFile').value='';$('photoDraft').hidden=true;$('uploadPhoto').disabled=true;}};
 $('refreshPhotos').onclick=()=>{
- socket.timeout(8000).emit('dev:photos',{},(err,result)=>{if(err||result?.error){$('devStatus').textContent=err?'Photo queue timed out.':result.error;return;}$('photoQueue').replaceChildren(...result.photos.map(p=>{const card=document.createElement('div');card.className='photoReview';const img=document.createElement('img');img.src=p.image;img.alt='Pending image from '+p.username;const name=document.createElement('strong');name.textContent=p.username;card.append(img,name);for(const action of ['approve','reject']){const b=document.createElement('button');b.textContent=action==='approve'?'Approve':'Reject';b.onclick=()=>{b.disabled=true;socket.timeout(8000).emit('dev:photo-review',{username:p.username,revision:p.revision,action},(error,r)=>{if(error||r?.error||!r?.ok){b.disabled=false;$('devStatus').textContent=error?'Review timed out.':r?.error||'Photo changed. Refresh the queue.';}else card.remove();});};card.append(b);}return card;}));if(!result.photos.length)$('photoQueue').textContent='No pending photos.';});
+ socket.timeout(8000).emit('dev:photos',{},(err,result)=>{if(err||result?.error){$('devStatus').textContent=err?'Photo queue timed out.':result.error;return;}$('photoQueue').replaceChildren(...result.photos.map(p=>{const card=document.createElement('div');card.className='photoReview';const img=document.createElement('img');img.src=p.image;img.alt='Pending image from '+p.username;const name=document.createElement('strong');name.textContent=p.username;card.append(img,name);for(const action of ['approve','reject']){const b=document.createElement('button');b.textContent=action==='approve'?'Approve':'Reject';b.onclick=()=>{b.disabled=true;socket.timeout(8000).emit('dev:photo-review',{username:p.username,revision:p.revision,action},(error,r)=>{if(error||r?.error||!r?.ok){b.disabled=false;$('devStatus').textContent=error?'Review timed out.':r?.error||'Photo changed. Refresh the queue.';}else card.remove();});};card.append(b);}return card;}));if(!result.photos.length)$('photoQueue').textContent='No photos need review.';});
 };
 
 // Training borrows the live renderer and models; it never emits game inputs.
@@ -919,7 +919,7 @@ const trainingView={selfId:()=>trainingSelfId||(trainingSelfId=socket.id||'pract
 const practiceSkipped=new Set();
 const practice=bindPractice({host:$('introScreen'),view:trainingView,getUser:()=>accountUser,onRole:r=>{selectedEntryRole=r==='Recovery'?'Scavenger':r;document.querySelectorAll('[data-role-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.roleChoice===selectedEntryRole)));},onSignIn:openProfile,onExit:()=>{practiceSkipped.add(selectedEntryRole);void dismissIntro();}});
 $('replayBriefing').textContent='PRACTICE / HOW TO PLAY';
-function openPractice(){if(state?.phase==='playing'||lobby?.phase==='playing')return showError('Practice is available between shifts.');release();document.exitPointerLock?.();$('optionsMenu').open=false;for(const el of [document.querySelector('header'),document.querySelector('footer'),$('game'),$('front')])el.inert=true;practice.open(selectedEntryRole);updateLobbyAmbience();}
+function openPractice(){if(state?.phase==='playing'||lobby?.phase==='playing')return showError('You can practice between rounds.');release();document.exitPointerLock?.();$('optionsMenu').open=false;for(const el of [document.querySelector('header'),document.querySelector('footer'),$('game'),$('front')])el.inert=true;practice.open(selectedEntryRole);updateLobbyAmbience();}
 
 $('regularDialog').addEventListener('close',()=>{if(practice.active&&practice.completed(selectedEntryRole))practice.close();});
 
