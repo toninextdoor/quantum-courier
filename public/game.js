@@ -1,11 +1,11 @@
-import {bindPractice} from '/practice.mjs?v=4.4.1';
-import {bindTrailer} from '/trailer.mjs?v=4.4.1';
-import {drawCrop} from '/photo-crop.mjs?v=4.4.1';
-import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.4.1';
-import {bindJoystick} from '/joystick.mjs?v=4.4.1';
-import { trolleyLayout } from '/trolley-layout.js?v=4.4.1';
+import {bindPractice} from '/practice.mjs?v=4.5.0';
+import {bindTrailer} from '/trailer.mjs?v=4.5.0';
+import {drawCrop} from '/photo-crop.mjs?v=4.5.0';
+import {playUISound,startLobbyAmbience} from '/menu-audio.mjs?v=4.5.0';
+import {bindJoystick} from '/joystick.mjs?v=4.5.0';
+import { trolleyLayout } from '/trolley-layout.js?v=4.5.0';
 import * as THREE from '/vendor/three.module.js';
-import { checkBrowser } from '/self-check.js?v=4.4.1';
+import { checkBrowser } from '/self-check.js?v=4.5.0';
 const $ = id => document.getElementById(id);
 const socket = io();
 let selectedEntryRole='Navigator';
@@ -206,7 +206,7 @@ socket.on('connect', () => {
   else showError();
   $('reconnectScreen').hidden=true;
 });
-socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.4.1 · SERVER ${data.version}`; serverCompatible=data.version==='4.4.1';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.4.1, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
+socket.on('build',data=>{ $('connection').textContent='● ONLINE';$('devVersion').textContent=`CLIENT 4.5.0 · SERVER ${data.version}`; serverCompatible=data.version==='4.5.0';if(!serverCompatible){ $('create').disabled=$('join').disabled=$('start').disabled=true;showError(`Update required: client 4.5.0, server ${data.version}. Deploy the matching server.js and reload before starting a crew.`,true);} });
 socket.on('disconnect', () => { devSignedIn=false;$('devLogin').hidden=false;$('devPanel').hidden=true;$('devDialog').close();release(); $('connection').textContent = 'RECONNECTING';if(lobby){$('reconnectScreen').hidden=false;$('reconnectMessage').textContent='Reconnecting your link… Your crew slot is held for up to 15 seconds. Keep this tab open.';} });
 socket.on('connect_error', () => { $('connection').textContent = 'OFFLINE'; showError('Unable to reach the game server.'); });
 socket.on('lobby', data => {
@@ -244,6 +244,7 @@ socket.on('chat', data => {
   $('chatLog').append(line); while ($('chatLog').children.length > 50) $('chatLog').firstChild.remove(); $('chatLog').scrollTop = $('chatLog').scrollHeight; tone(700, 0.06, 'sine', 0.025);
 });
 socket.on('world', data => {
+  if(practice.active)practice.close();
   trailerPlayer.close({restoreFocus:false});
   stopMenuSounds();if(lobbyBedStop){lobbyBedStop();lobbyBedStop=null;}
   world = data;
@@ -252,6 +253,7 @@ socket.on('world', data => {
   catch (e) { console.error(e); $('renderError').hidden = false; showError('3D rendering could not start. Try a browser with WebGL enabled.'); }
 });
 socket.on('state', data => {
+  if(practice.active&&trainingBackup){trainingBackup.previous=trainingBackup.state;trainingBackup.state=data;return;}
   if(data.phase==='playing')trailerPlayer.close({restoreFocus:false});
   previous = state; state = data; received = performance.now();
   $('reconnectScreen').hidden=!data.paused;
@@ -316,11 +318,11 @@ socket.on('state', data => {
   if (data.phase === 'finished') {
     release(); document.exitPointerLock?.(); $('result').hidden = false;
     $('resultTitle').textContent = data.outcome === 'won' ? 'You made it out.' : 'Room 905 keeps its secrets.';
-    $('resultSubtitle').textContent = data.outcome === 'won' ? 'Quota secured. Trust, timing, and a little nerve.' : 'Try the nearby valuables first. Walk with cargo; use the Navigator’s waypoints.';
+    $('resultSubtitle').textContent = data.outcome === 'won' ? `Quota reached: $${data.score} recovered. Your crew completed the shift.` : `Time ran out. $${Math.max(0,data.quota-data.score)} short of the quota. Try nearby valuables first and follow your Navigator’s waypoints.`;
     $('resultScore').textContent = `$${data.score} / $${data.quota}`; $('resultDeliveries').textContent = data.deliveries;
     if(previous?.phase!=='finished')$('resultXP').textContent=accountUser?(data.xpAward?`+${data.xpAward} XP · saving to your profile`:'No XP this shift · play at least 30 seconds; developer-controlled rounds do not earn XP.'):'Sign in to save XP and unlock cosmetics.';
     $('resultDamage').textContent = `$${data.damage}`; $('resultCatches').textContent = data.catches;
-    $('again').hidden = lobby?.host !== socket.id; $('replayHelp').textContent = lobby?.host === socket.id ? 'Same crew. Fresh cargo. Ready when you are.' : 'Waiting for the host to launch another shift.';
+    $('again').hidden = lobby?.host !== socket.id; $('replayHelp').textContent = lobby?.host === socket.id ? 'Play again with the same crew and roles on a new randomized layout.' : 'Waiting for the host to launch another shift.';
   }
   updateAmbience();
   updateEntities(nav);
@@ -573,19 +575,20 @@ function makeEnemy() {
 }
 function updateEntities(nav) {
   if(!scene || !actorGroup || !state)return;
+  const viewerId=trainingBackup?trainingView.selfId():socket.id;
   updateTrolley();
   const itemIds=new Set(state.items.map(i=>i.id));
   for(const [id,mesh]of items)if(!itemIds.has(id)){itemGroup.remove(mesh);disposeGroup(mesh);items.delete(id);}
   for(const item of state.items){
     let mesh=items.get(item.id);
     if(!mesh){mesh=makeCargo(item);if(nav){const label=textSprite(`$${Math.round(item.value*item.condition/100)}`,'#fac875',2.6,false);label.position.y=1.25;mesh.add(label);mesh.userData.valueLabel=label;mesh.userData.labelValue=Math.round(item.value*item.condition/100);}items.set(item.id,mesh);itemGroup.add(mesh);}
-    mesh.visible=item.carrier!==socket.id;mesh.position.set(item.x,(item.y||0)+(item.carrier?.6:0),item.z);
+    mesh.visible=item.carrier!==viewerId;mesh.position.set(item.x,(item.y||0)+(item.carrier?.6:0),item.z);
     mesh.userData.ring.visible=!item.carrier;mesh.userData.carrier=item.carrier;
     const value=Math.round(item.value*item.condition/100);
     if(nav&&value!==mesh.userData.labelValue){mesh.remove(mesh.userData.valueLabel);disposeGroup(mesh.userData.valueLabel);const label=textSprite(`$${value}`,'#fac875',2.6,false);label.position.y=1.25;mesh.add(label);mesh.userData.valueLabel=label;mesh.userData.labelValue=value;}
   }
-  for(const a of state.actors){if(!actors.has(a.id)){const mesh=makeActor(a.name,nav,a.avatar,a.heritage);actors.set(a.id,mesh);actorGroup.add(mesh);}actors.get(a.id).visible=nav||a.id!==socket.id;}
-  const cargo=state.items.find(i=>i.carrier===socket.id);
+  for(const a of state.actors){if(!actors.has(a.id)){const mesh=makeActor(a.name,nav,a.avatar,a.heritage);actors.set(a.id,mesh);actorGroup.add(mesh);}actors.get(a.id).visible=nav||a.id!==viewerId;}
+  const cargo=state.items.find(i=>i.carrier===viewerId);
   if(carryGroup.userData.id!==cargo?.id){
     while(carryGroup.children.length){const child=carryGroup.children[0];carryGroup.remove(child);disposeGroup(child);}
     carryGroup.userData.id=cargo?.id;
@@ -649,7 +652,7 @@ function interpolate(now,current,old) {
 }
 function frame(now) {
   requestAnimationFrame(frame);let dt=Math.min((now-lastFrame)/1000,.05);
-  if(!renderer||!state||!world||$('game').hidden||document.hidden)return;
+  if(trainingBackup||!renderer||!state||!world||$('game').hidden||document.hidden)return;
   // Limit high-refresh screens to 60 renders/sec; networking stays at 20 Hz.
   if(now-lastRender < 1000/(quality===2?30:60)-1 || (state.phase==='finished' && now-lastRender<250))return;
   lastRender=now; lastFrame=now;
@@ -891,8 +894,30 @@ $('refreshPhotos').onclick=()=>{
  socket.timeout(8000).emit('dev:photos',{},(err,result)=>{if(err||result?.error){$('devStatus').textContent=err?'Photo queue timed out.':result.error;return;}$('photoQueue').replaceChildren(...result.photos.map(p=>{const card=document.createElement('div');card.className='photoReview';const img=document.createElement('img');img.src=p.image;img.alt='Pending image from '+p.username;const name=document.createElement('strong');name.textContent=p.username;card.append(img,name);for(const action of ['approve','reject']){const b=document.createElement('button');b.textContent=action==='approve'?'Approve':'Reject';b.onclick=()=>{b.disabled=true;socket.timeout(8000).emit('dev:photo-review',{username:p.username,revision:p.revision,action},(error,r)=>{if(error||r?.error||!r?.ok){b.disabled=false;$('devStatus').textContent=error?'Review timed out.':r?.error||'Photo changed. Refresh the queue.';}else card.remove();});};card.append(b);}return card;}));if(!result.photos.length)$('photoQueue').textContent='No pending photos.';});
 };
 
+// Training borrows the live renderer and models; it never emits game inputs.
+let trainingBackup=null,trainingContainer=null,trainingRole=null,trainingMarker=null,trainingSelfId=null;
+const trainingView={selfId:()=>trainingSelfId||(trainingSelfId=socket.id||'practice-self'),
+ open(container,role,data){
+  if(!trainingBackup)trainingBackup={world,state,previous};trainingContainer=container;trainingRole=role;initGraphics();container.append(renderer.domElement);
+  world={width:28,depth:24,home:data.home,hazards:data.hazards,platforms:[],walls:[{x:0,z:0,w:28,d:.3},{x:0,z:23.7,w:28,d:.3},{x:0,z:0,w:.3,d:24},{x:27.7,z:0,w:.3,d:24},{x:12,z:6,w:.3,d:11}],quota:150};state={phase:'practice',role,actors:[],items:[],score:0,quota:150,recovered:[]};previous=null;buildWorld(role==='Navigator');scene.fog=role==='Navigator'?null:new THREE.FogExp2(0x0c1420,.045);
+  if(role==='Navigator'){trainingMarker=ring(pingGroup,.8,0xb9f8bd,0,0,.08);commandFocus=true;positionCommandCamera();}else trainingMarker=null;
+ },
+ render(snapshot,heading,tilt){
+  state=snapshot;updateEntities(snapshot.role==='Navigator');
+  for(const a of snapshot.actors){const mesh=actors.get(a.id);if(mesh){mesh.position.set(a.x,a.y||0,a.z);mesh.rotation.y=-a.yaw;}}
+  for(const [id,mesh]of items){const i=snapshot.items.find(i=>i.id===id);if(i){mesh.position.set(i.x,i.y||0,i.z);mesh.rotation.y=.25;}}
+  if(snapshot.enemy){enemyGroup.position.set(snapshot.enemy.x,0,snapshot.enemy.z);enemyGroup.rotation.y=-snapshot.enemy.yaw;enemyGroup.userData.optic.color.setHex(snapshot.enemy.stunned>0?0x6cc9ed:0xf2ba6c);}
+  if(snapshot.ping)pingGroup.position.set(snapshot.ping.x,.015,snapshot.ping.z);
+  const w=trainingContainer.clientWidth,h=trainingContainer.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=commandCamera.aspect=w/h;camera.updateProjectionMatrix();commandCamera.updateProjectionMatrix();positionCommandCamera();
+  if(snapshot.role!=='Navigator'){const a=snapshot.actors.find(a=>a.id===this.selfId());if(a){camera.position.set(a.x,1.38+(a.y||0),a.z);camera.rotation.set(-tilt,-heading,0,'YXZ');flashlight.position.copy(camera.position);lightTarget.position.copy(camera.position).add(new THREE.Vector3(0,0,-8).applyQuaternion(camera.quaternion));}}
+  renderer.render(scene,snapshot.role==='Navigator'?commandCamera:camera);
+ },
+ point(e){if(trainingRole!=='Navigator')return null;const rect=renderer.domElement.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),commandCamera);const point=new THREE.Vector3();if(raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-1.13),point)&&hologram){hologram.updateMatrixWorld(true);return hologram.worldToLocal(point);}return null;},
+ close(){if(!trainingBackup)return;document.exitPointerLock?.();$('scene').append(renderer.domElement);for(const g of [staticGroup,actorGroup,itemGroup,enemyGroup,pingGroup,commandGroup,hologram])disposeGroup(g);staticGroup=actorGroup=itemGroup=enemyGroup=pingGroup=commandGroup=hologram=null;items.clear();actors.clear();while(carryGroup.children.length)disposeGroup(carryGroup.children[0]);carryGroup.userData.id=null;trolleyCargoGroup=null;({world,state,previous}=trainingBackup);trainingBackup=null;trainingContainer=trainingRole=trainingSelfId=null;resize();}
+};
+
 const practiceSkipped=new Set();
-const practice=bindPractice({host:$('introScreen'),getUser:()=>accountUser,onRole:r=>{selectedEntryRole=r;document.querySelectorAll('[data-role-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.roleChoice===r)));},onSignIn:openProfile,onExit:()=>{practiceSkipped.add(selectedEntryRole);void dismissIntro();}});
+const practice=bindPractice({host:$('introScreen'),view:trainingView,getUser:()=>accountUser,onRole:r=>{selectedEntryRole=r==='Recovery'?'Scavenger':r;document.querySelectorAll('[data-role-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.roleChoice===selectedEntryRole)));},onSignIn:openProfile,onExit:()=>{practiceSkipped.add(selectedEntryRole);void dismissIntro();}});
 $('replayBriefing').textContent='PRACTICE / HOW TO PLAY';
 function openPractice(){if(state?.phase==='playing'||lobby?.phase==='playing')return showError('Practice is available between shifts.');release();document.exitPointerLock?.();$('optionsMenu').open=false;for(const el of [document.querySelector('header'),document.querySelector('footer'),$('game'),$('front')])el.inert=true;practice.open(selectedEntryRole);updateLobbyAmbience();}
 

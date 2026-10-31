@@ -1,3 +1,7 @@
+# Room 905 V4.5.0
+
+3D role practice uses the live game renderer and shared movement. See UPDATE.md before deploying.
+
 # Room 905 V4.4.1
 
 Interactive role practice now replaces the startup flipbook. See UPDATE.md for installation and progress-saving details.

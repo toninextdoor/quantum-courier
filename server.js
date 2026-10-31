@@ -1,4 +1,5 @@
 'use strict';
+const movement=require('./public/movement.js');
 const express = require('express');
 const {installAccounts}=require('./accounts');
 const {rewardXP}=require('./progression');
@@ -160,7 +161,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   });
   const invitations=new Map();
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.4.1', build:'room905-4.4.1-trailer-polish' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, version: '4.5.0', build:'room905-4.5.0-trailer-polish' }));
   const ROLE_LIMITS={Navigator:1,Guardian:1,Scavenger:2};
   const roleAvailable=(room,role,except)=>Object.hasOwn(ROLE_LIMITS,role)&&room.players.filter(p=>p.id!==except&&p.role===role).length<ROLE_LIMITS[role];
   function roles(room){for(const p of room.players){p.input={};p.inputAt=0;}}
@@ -218,10 +219,8 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       forward /= n; strafe /= n;
       if(a.carrying!==null){if(!Number.isFinite(a.gripUntil))a.gripUntil=now+2000;if(now>=a.gripUntil)dropCargo(g,a,'lost grip on');}
       const carrying = a.carrying !== null;
-      const speed = carrying ? (input.sprint ? 2.8 : 2.05) : (input.sprint ? 4.6 : 3.15);
       a.yaw = Number.isFinite(input.yaw) ? input.yaw : a.yaw;
-      const dx = (Math.sin(a.yaw) * forward + Math.cos(a.yaw) * strafe) * speed * DT;
-      const dz = (-Math.cos(a.yaw) * forward + Math.sin(a.yaw) * strafe) * speed * DT;
+      const {dx,dz}=movement.step({forward,strafe,yaw:a.yaw,sprint:input.sprint,carrying},DT);
       const old = { x: a.x, z: a.z, y:a.y };
       if(input.jump&&!a.jumpHeld&&a.grounded){a.vy=5.4;a.grounded=false;}
       a.jumpHeld=!!input.jump;
@@ -342,7 +341,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
       const room=rooms.get(socket.data.code);resumeClock(room);roster(room);
       if(room.game)snapshot(room,performance.now());
     }
-    socket.emit('build', {version:'4.4.1'});
+    socket.emit('build', {version:'4.5.0'});
     socket.on('check:ping',ack=>{if(typeof ack==='function')ack({ok:true});});
     socket.on('dev:login',(data,ack)=>{
       if(typeof ack!=='function')return;
@@ -572,7 +571,7 @@ function createGameServer({ mapFactory = generateMap, devUsername = process.env.
   return { app, server, io, rooms, close };
 }
 if (require.main === module) {
-  const game = createGameServer(); game.server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Room 905 v4.4.1 running on port ${process.env.PORT || 3000}`));
+  const game = createGameServer(); game.server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Room 905 v4.5.0 running on port ${process.env.PORT || 3000}`));
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await game.close(); process.exit(0); });
 }
 module.exports = { createGameServer, solid, route, clearLine, WALLS, HOME, CARGO, HAZARDS, PATROL, generateMap, floorCells, resolvePlatformOverlap, platformOverlap };
